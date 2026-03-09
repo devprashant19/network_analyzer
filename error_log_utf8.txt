@@ -33,19 +33,18 @@
 > Task :app:writeDebugAppMetadata UP-TO-DATE
 > Task :app:writeDebugSigningConfigVersions UP-TO-DATE
 
-> Task :app:compileDebugKotlin
+> Task :app:compileDebugKotlin FAILED
 ./gradlew : e: file:///
 C:/Users/u/AndroidStudi
 oProjects/Innova/app/sr
 c/main/java/com/innova/
 analyzer/ui/dashboard/D
-ashboardScreen.kt:26:37
- Expression 
-'viewModel' of type 
-'DashboardViewModel' 
-cannot be invoked as a 
-function. The function 
-'invoke()' is not found
+ashboardScreen.kt:97:39
+ @Composable 
+invocations can only 
+happen from the 
+context of a 
+@Composable function
 At line:1 char:1
 + ./gradlew 
 assembleDebug 
@@ -57,15 +56,24 @@ error_log.txt 2>&1
     + CategoryInfo     
          : NotSpecifi  
   ed: (e: file:///C:   
- /U...)' is not fou    
-nd:String) [], Rem    
+ /U...osable functi    
+on:String) [], Rem    
 oteException
     + FullyQualifiedEr 
    rorId : NativeComm  
   andError
  
-
-> Task :app:compileDebugKotlin FAILED
+e: file:///C:/Users/u/A
+ndroidStudioProjects/In
+nova/app/src/main/java/
+com/innova/analyzer/ui/
+dashboard/DashboardScre
+en.kt:111:39 
+@Composable 
+invocations can only 
+happen from the 
+context of a 
+@Composable function
 
 FAILURE: Build failed 
 with an exception.
@@ -102,5 +110,5 @@ You can use '--warning-mode all' to show the individual deprecation warnings and
 
 For more on this, please refer to https://docs.gradle.org/8.9/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
 
-BUILD FAILED in 4s
+BUILD FAILED in 3s
 27 actionable tasks: 2 executed, 25 up-to-date
