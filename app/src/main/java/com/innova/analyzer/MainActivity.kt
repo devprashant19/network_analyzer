@@ -49,9 +49,9 @@ class MainActivity : ComponentActivity() {
         val db = TrafficDatabase.getDatabase(this)
         val dao = db.trafficDao()
 
-        lifecycleScope.launch(Dispatchers.IO) {
-            FakeDataInjector.startInjecting(dao)
-        }
+        // lifecycleScope.launch(Dispatchers.IO) {
+        //     FakeDataInjector.startInjecting(dao)
+        // }
 
         // 3. The Modern Compose Navigation UI
         setContent {

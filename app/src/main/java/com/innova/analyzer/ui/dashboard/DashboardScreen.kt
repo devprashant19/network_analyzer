@@ -52,12 +52,19 @@ fun DashboardScreen(
         }
     }
 
+    // 🚨 The Updated Button Click Handler (With Poison Pill)
     val onToggleVpn = {
         if (isVpnActive) {
-            val intent = Intent(context, TrafficCaptureService::class.java)
-            context.stopService(intent)
+            // FIRE THE POISON PILL!
+            // Notice we use startService() to send a message INTO the running service
+            val intent = Intent(context, TrafficCaptureService::class.java).apply {
+                action = "STOP_VPN"
+            }
+            context.startService(intent)
             viewModel.setVpnActive(false)
+
         } else {
+            // Ask Android OS for permission to turn it on
             val intent = VpnService.prepare(context)
             if (intent != null) {
                 vpnPermissionLauncher.launch(intent)
@@ -94,7 +101,7 @@ fun DashboardScreen(
 
         androidx.compose.foundation.Canvas(modifier = Modifier.fillMaxSize()) {
             val orbRadius = size.width * 0.8f
-            
+
             // Orb 1 (Cyan)
             drawCircle(
                 brush = Brush.radialGradient(
@@ -108,7 +115,7 @@ fun DashboardScreen(
                 center = androidx.compose.ui.geometry.Offset(x = orbOffset, y = orbOffset * 0.5f),
                 radius = orbRadius
             )
-            
+
             // Orb 2 (Purple)
             drawCircle(
                 brush = Brush.radialGradient(
