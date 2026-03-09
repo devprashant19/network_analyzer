@@ -6,7 +6,7 @@ plugins {
 }
 
 android {
-    namespace = "com.example.innova"
+    namespace = "com.innova.analyzer"
     compileSdk {
         version = release(36) {
             minorApiLevel = 1
@@ -14,7 +14,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.example.innova"
+        applicationId = "com.innova.analyzer"
         minSdk = 24
         targetSdk = 36
         versionCode = 1

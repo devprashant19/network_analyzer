@@ -1,4 +1,4 @@
-package com.example.innova
+package com.innova.analyzer
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
