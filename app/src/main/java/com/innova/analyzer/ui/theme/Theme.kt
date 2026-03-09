@@ -1,4 +1,4 @@
-package com.example.innova.ui.theme
+package com.innova.analyzer.ui.theme
 
 import android.app.Activity
 import android.os.Build

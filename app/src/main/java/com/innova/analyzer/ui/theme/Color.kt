@@ -1,4 +1,4 @@
-package com.example.innova.ui.theme
+package com.innova.analyzer.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
