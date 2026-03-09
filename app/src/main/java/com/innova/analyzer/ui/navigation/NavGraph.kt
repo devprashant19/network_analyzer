@@ -12,13 +12,20 @@ import com.innova.analyzer.ui.dashboard.DashboardScreen
 import com.innova.analyzer.ui.report.ReportScreen
 
 @Composable
-fun MainNavGraph(navController: NavHostController, innerPadding: PaddingValues) {
+fun MainNavGraph(
+    navController: NavHostController, 
+    innerPadding: PaddingValues,
+    isDarkTheme: Boolean,
+    onThemeToggle: () -> Unit
+) {
     NavHost(
         navController = navController,
         startDestination = BottomNavItem.Dashboard.route,
         modifier = Modifier.padding(innerPadding) // Crucial: Respects the bottom bar height
     ) {
-        composable(BottomNavItem.Dashboard.route) { DashboardScreen() }
+        composable(BottomNavItem.Dashboard.route) { 
+            DashboardScreen(isDarkTheme = isDarkTheme, onThemeToggle = onThemeToggle) 
+        }
         composable(BottomNavItem.Alerts.route) { AlertsScreen() }
         composable(BottomNavItem.Report.route) { ReportScreen() }
     }

@@ -11,33 +11,58 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.platform.LocalContext
 
-private val DarkColorScheme = darkColorScheme(
-    primary = Purple80,
-    secondary = PurpleGrey80,
-    tertiary = Pink80
+private val CyberColorScheme = darkColorScheme(
+    primary = NeonCyan,
+    onPrimary = DarkBackground,
+    primaryContainer = CardSurface,
+    onPrimaryContainer = NeonCyan,
+    secondary = CyberPurple,
+    onSecondary = TextPrimary,
+    secondaryContainer = CardSurface,
+    onSecondaryContainer = CyberPurple,
+    tertiary = NeonCyan, // Optional extra accent
+    onTertiary = DarkBackground,
+    background = DarkBackground,
+    onBackground = TextPrimary,
+    surface = DarkBackground,
+    onSurface = TextPrimary,
+    surfaceVariant = CardSurface,
+    onSurfaceVariant = TextSecondary,
+    error = CyberRed,
+    onError = TextPrimary,
+    errorContainer = CardSurface,
+    onErrorContainer = CyberRed
 )
 
-private val LightColorScheme = lightColorScheme(
-    primary = Purple40,
-    secondary = PurpleGrey40,
-    tertiary = Pink40
-
-    /* Other default colors to override
-    background = Color(0xFFFFFBFE),
-    surface = Color(0xFFFFFBFE),
-    onPrimary = Color.White,
-    onSecondary = Color.White,
-    onTertiary = Color.White,
-    onBackground = Color(0xFF1C1B1F),
-    onSurface = Color(0xFF1C1B1F),
-    */
+private val CyberLightColorScheme = lightColorScheme(
+    primary = NeonCyan,
+    onPrimary = DarkBackground,
+    primaryContainer = CardSurfaceLightUI,
+    onPrimaryContainer = NeonCyan,
+    secondary = CyberPurple,
+    onSecondary = TextPrimaryLight,
+    secondaryContainer = CardSurfaceLightUI,
+    onSecondaryContainer = CyberPurple,
+    tertiary = NeonCyan,
+    onTertiary = LightBackground,
+    background = LightBackground,
+    onBackground = TextPrimaryLight,
+    surface = LightBackground,
+    onSurface = TextPrimaryLight,
+    surfaceVariant = CardSurfaceLightUI,
+    onSurfaceVariant = TextSecondaryLight,
+    error = CyberRed,
+    onError = TextPrimaryLight,
+    errorContainer = CardSurfaceLightUI,
+    onErrorContainer = CyberRed
 )
 
 @Composable
 fun InnovaTheme(
+    // We now respect the parameter for the toggle!
     darkTheme: Boolean = isSystemInDarkTheme(),
-    // Dynamic color is available on Android 12+
-    dynamicColor: Boolean = true,
+    // We disable dynamic color by default to strictly enforce brand colors
+    dynamicColor: Boolean = false,
     content: @Composable () -> Unit
 ) {
     val colorScheme = when {
@@ -46,8 +71,8 @@ fun InnovaTheme(
             if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
         }
 
-        darkTheme -> DarkColorScheme
-        else -> LightColorScheme
+        darkTheme -> CyberColorScheme
+        else -> CyberLightColorScheme
     }
 
     MaterialTheme(

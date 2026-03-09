@@ -17,48 +17,69 @@ import com.innova.analyzer.data.models.NetworkEvent
 @Composable
 fun NetworkRowItem(event: NetworkEvent) {
     val protocolColor = when (event.protocol) {
-        ConnectionProtocol.TCP -> Color(0xFF2196F3) // Blue
-        ConnectionProtocol.UDP -> Color(0xFF4CAF50) // Green
-        ConnectionProtocol.HTTPS -> Color(0xFF9C27B0) // Purple
-        else -> Color.Gray
+        ConnectionProtocol.TCP -> MaterialTheme.colorScheme.primary // Cyan
+        ConnectionProtocol.UDP -> MaterialTheme.colorScheme.secondary // Purple
+        ConnectionProtocol.HTTPS -> Color(0xFF00FF7F) // Spring Green for HTTPS
+        else -> MaterialTheme.colorScheme.onSurfaceVariant // Grey
     }
 
     Card(
         modifier = Modifier.fillMaxWidth(),
-        elevation = CardDefaults.cardElevation(2.dp)
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+        elevation = CardDefaults.cardElevation(4.dp),
+        shape = RoundedCornerShape(12.dp)
     ) {
         Row(
-            modifier = Modifier.padding(12.dp),
+            modifier = Modifier.padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Protocol Badge
+            // Protocol Badge (Pill Shaped)
             Box(
                 modifier = Modifier
-                    .size(width = 60.dp, height = 24.dp)
-                    .background(protocolColor, RoundedCornerShape(4.dp)),
+                    .background(
+                        color = protocolColor.copy(alpha = 0.2f),
+                        shape = RoundedCornerShape(50) // Pill shape
+                    )
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
                 contentAlignment = Alignment.Center
             ) {
-                Text(event.protocol.name, color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                Text(
+                    text = event.protocol.name,
+                    color = protocolColor,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    letterSpacing = 1.sp
+                )
             }
 
-            Spacer(modifier = Modifier.width(12.dp))
+            Spacer(modifier = Modifier.width(16.dp))
 
             // Info Column
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = event.domain ?: "${event.destIp}:${event.destPort}",
                     style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = FontWeight.Bold
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1
                 )
+                Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = "${event.appName ?: "Unknown App"} • ${event.payloadSize} bytes",
+                    text = "${event.appName ?: "Unknown Process"} • ${event.payloadSize} B",
                     style = MaterialTheme.typography.bodySmall,
-                    color = Color.Gray
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
 
             if (event.isSuspicious) {
-                Text("⚠️", fontSize = 20.sp)
+                Spacer(modifier = Modifier.width(8.dp))
+                Box(
+                    modifier = Modifier
+                        .background(MaterialTheme.colorScheme.error.copy(alpha = 0.2f), RoundedCornerShape(8.dp))
+                        .padding(8.dp)
+                ) {
+                    Text("⚠️", fontSize = 16.sp)
+                }
             }
         }
     }

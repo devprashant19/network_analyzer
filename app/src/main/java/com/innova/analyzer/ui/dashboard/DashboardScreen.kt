@@ -1,5 +1,6 @@
 package com.innova.analyzer.ui.dashboard
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -17,18 +18,22 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.innova.analyzer.data.models.NetworkEvent
-import com.innova.analyzer.ui.dashboard.components.NetworkRowItem // We will create this next
+import androidx.compose.material.icons.filled.DarkMode
+import androidx.compose.material.icons.filled.LightMode
+import com.innova.analyzer.ui.dashboard.components.NetworkRowItem
 
 @Composable
 fun DashboardScreen(
-    viewModel: DashboardViewModel = viewModel() // Connects to our ViewModel
+    viewModel: DashboardViewModel = viewModel(), // Connects to our ViewModel
+    isDarkTheme: Boolean = true,
+    onThemeToggle: () -> Unit = {}
 ) {
     // Collect the Flow from Room as a State that Compose understands
     val logs by viewModel.trafficLogs.collectAsState()
 
     Column(modifier = Modifier.fillMaxSize()) {
         // 1. Header Area (Status)
-        DashboardHeader(logs.size)
+        DashboardHeader(logs.size, isDarkTheme, onThemeToggle)
 
         // 2. The Live Feed
         if (logs.isEmpty()) {
@@ -48,16 +53,58 @@ fun DashboardScreen(
 }
 
 @Composable
-fun DashboardHeader(count: Int) {
+fun DashboardHeader(count: Int, isDarkTheme: Boolean, onThemeToggle: () -> Unit) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .padding(16.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
+        elevation = CardDefaults.cardElevation(8.dp)
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Text("VPN Status: ACTIVE", style = MaterialTheme.typography.titleMedium)
-            Text("Total Packets Intercepted: $count", style = MaterialTheme.typography.bodyMedium)
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(
+                    brush = androidx.compose.ui.graphics.Brush.linearGradient(
+                        colors = listOf(
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.8f),
+                            MaterialTheme.colorScheme.secondary.copy(alpha = 0.8f)
+                        )
+                    )
+                )
+        ) {
+            // Theme Toggle Button in Top Right
+            IconButton(
+                onClick = onThemeToggle,
+                modifier = Modifier.align(Alignment.TopEnd).padding(8.dp)
+            ) {
+                Icon(
+                    imageVector = if (isDarkTheme) Icons.Default.LightMode else Icons.Default.DarkMode,
+                    contentDescription = "Toggle Theme",
+                    tint = Color.White
+                )
+            }
+
+            Column(
+                modifier = Modifier.padding(24.dp).fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = "SYSTEM ACTIVE",
+                    style = MaterialTheme.typography.titleLarge,
+                    color = Color.White,
+                    fontWeight = androidx.compose.ui.text.font.FontWeight.Black,
+                    letterSpacing = 2.sp
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "$count PACKETS INTERCEPTED",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = Color.White.copy(alpha = 0.9f),
+                    letterSpacing = 1.sp
+                )
+            }
         }
     }
 }
@@ -69,8 +116,18 @@ fun EmptyState() {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        Icon(Icons.Default.Terminal, contentDescription = null, modifier = Modifier.size(64.dp), tint = Color.Gray)
-        Spacer(modifier = Modifier.height(16.dp))
-        Text("Waiting for traffic...", color = Color.Gray)
+        Icon(
+            imageVector = Icons.Default.Terminal,
+            contentDescription = null,
+            modifier = Modifier.size(80.dp),
+            tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
+        )
+        Spacer(modifier = Modifier.height(24.dp))
+        Text(
+            text = "AWAITING TRAFFIC...",
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.titleMedium,
+            letterSpacing = 2.sp
+        )
     }
 }

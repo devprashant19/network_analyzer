@@ -13,6 +13,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Scaffold
 import androidx.compose.ui.Modifier
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.compose.rememberNavController
 import com.innova.analyzer.core.vpn.TrafficCaptureService
@@ -53,15 +55,24 @@ class MainActivity : ComponentActivity() {
 
         // 3. The Modern Compose Navigation UI
         setContent {
-            InnovaTheme {
+            var isDarkTheme by androidx.compose.runtime.remember { 
+                androidx.compose.runtime.mutableStateOf(true) 
+            }
+
+            InnovaTheme(darkTheme = isDarkTheme) {
                 val navController = rememberNavController()
 
                 Scaffold(
                     modifier = Modifier.fillMaxSize(),
-                    bottomBar = { BottomNavBar(navController) }
+                    bottomBar = { BottomNavBar(navController, isDarkTheme = isDarkTheme) }
                 ) { innerPadding ->
                     // This hosts your Dashboard, Alerts, and Report screens!
-                    MainNavGraph(navController, innerPadding)
+                    MainNavGraph(
+                        navController = navController, 
+                        innerPadding = innerPadding,
+                        isDarkTheme = isDarkTheme,
+                        onThemeToggle = { isDarkTheme = !isDarkTheme }
+                    )
                 }
             }
         }
