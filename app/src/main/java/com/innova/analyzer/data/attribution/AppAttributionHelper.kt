@@ -5,6 +5,7 @@ import android.content.pm.PackageManager
 import android.net.ConnectivityManager
 import android.os.Build
 import android.util.Log
+import java.net.InetAddress
 import java.net.InetSocketAddress
 
 class AppAttributionHelper(context: Context) {
@@ -12,35 +13,41 @@ class AppAttributionHelper(context: Context) {
     private val connectivityManager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
     private val packageManager = context.packageManager
 
-    // Caches to prevent CPU spikes during heavy packet floods
     private val appNameCache = mutableMapOf<Int, String>()
     private val packageNameCache = mutableMapOf<Int, String>()
 
-    /**
-     * Asks Android OS which app owns the specific source and destination ports.
-     */
     fun getConnectionUid(protocolNum: Int, sourceIp: String, sourcePort: Int, destIp: String, destPort: Int): Int {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             try {
-                val local = InetSocketAddress(sourceIp, sourcePort)
-                val remote = InetSocketAddress(destIp, destPort)
-                // This is the magic Android 10+ API that reveals the app
-                return connectivityManager.getConnectionOwnerUid(protocolNum, local, remote)
+                // 🟢 FIX: Ensure we use the correct protocol mapping (TCP=6, UDP=17)
+                // Android OS uses the IP protocol numbers directly.
+                val local = InetSocketAddress(InetAddress.getByName(sourceIp), sourcePort)
+                val remote = InetSocketAddress(InetAddress.getByName(destIp), destPort)
+                
+                val protocol = when (protocolNum) {
+                    0 -> 6  // TCP
+                    1 -> 17 // UDP
+                    else -> protocolNum
+                }
+                
+                return connectivityManager.getConnectionOwnerUid(protocol, local, remote)
             } catch (e: Exception) {
-                Log.e("Attribution", "Failed to resolve UID: ${e.message}")
+                // Suppress logs for common failed resolutions to avoid overhead
             }
         }
         return -1
     }
 
-    /**
-     * Translates a raw UID (e.g., 10245) into a human-readable name (e.g., "Instagram").
-     */
     fun getAppName(uid: Int): String {
-        if (uid == -1) return "Background Process" // Fallback for unresolved packets
+        if (uid <= 0) return "System Process"
         if (appNameCache.containsKey(uid)) return appNameCache[uid]!!
 
-        val packages = packageManager.getPackagesForUid(uid)
+        val packages = try {
+            packageManager.getPackagesForUid(uid)
+        } catch (e: Exception) {
+            null
+        }
+        
         if (!packages.isNullOrEmpty()) {
             val packageName = packages[0]
             try {
@@ -51,13 +58,26 @@ class AppAttributionHelper(context: Context) {
                 packageNameCache[uid] = packageName
                 return appName
             } catch (e: PackageManager.NameNotFoundException) {
-                Log.e("Attribution", "App not found for UID: $uid")
+                // Fallback
             }
         }
-        return "System ($uid)"
+        return "Process $uid"
     }
 
     fun getPackageName(uid: Int): String? {
-        return packageNameCache[uid]
+        if (uid <= 0) return null
+        if (packageNameCache.containsKey(uid)) return packageNameCache[uid]
+
+        val packages = try {
+            packageManager.getPackagesForUid(uid)
+        } catch (e: Exception) {
+            null
+        }
+        
+        if (!packages.isNullOrEmpty()) {
+            packageNameCache[uid] = packages[0]
+            return packages[0]
+        }
+        return null
     }
 }

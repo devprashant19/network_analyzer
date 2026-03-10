@@ -1,9 +1,15 @@
 package com.innova.analyzer.core.vpn
 
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.content.Context
 import android.content.Intent
 import android.net.VpnService
+import android.os.Build
 import android.os.ParcelFileDescriptor
 import android.util.Log
+import androidx.core.app.NotificationCompat
 import com.innova.analyzer.core.network.PacketParser
 import com.innova.analyzer.core.network.TrafficStream
 import com.innova.analyzer.data.attribution.AppAttributionHelper
@@ -14,27 +20,60 @@ import java.io.FileInputStream
 class TrafficCaptureService : VpnService() {
 
     private var vpnInterface: ParcelFileDescriptor? = null
-    private var vpnInputStream: FileInputStream? = null // 🟢 Track the stream directly
+    private var vpnInputStream: FileInputStream? = null
 
     private val serviceScope = CoroutineScope(Dispatchers.IO + Job())
 
+    companion object {
+        private const val NOTIFICATION_ID = 1001
+        private const val CHANNEL_ID = "vpn_monitoring_channel"
+    }
+
+    override fun onCreate() {
+        super.onCreate()
+        createNotificationChannel()
+        startForeground(NOTIFICATION_ID, createNotification())
+    }
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        // 🚨 THE POISON PILL 🚨
         if (intent?.action == "STOP_VPN") {
             Log.d("InnovaVPN", "Kill switch received. Committing system shutdown.")
-            stopVpn()   // Close the sockets and streams
-            stopSelf()  // Tell Android: "I am officially killing myself, do not restart me."
+            stopVpn()
+            stopSelf()
             return START_NOT_STICKY
         }
 
-        // If it's not a stop command, start it up normally
         setupVpn()
-        return START_NOT_STICKY
+        return START_STICKY // 🟢 Re-run if killed by OS
     }
 
     override fun onDestroy() {
         super.onDestroy()
         stopVpn()
+    }
+
+    private fun createNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                CHANNEL_ID,
+                "VPN Monitoring",
+                NotificationManager.IMPORTANCE_LOW
+            ).apply {
+                description = "Shows that Innova is monitoring your network traffic"
+            }
+            val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            manager.createNotificationChannel(channel)
+        }
+    }
+
+    private fun createNotification(): Notification {
+        return NotificationCompat.Builder(this, CHANNEL_ID)
+            .setContentTitle("Innova Network Monitor")
+            .setContentText("Monitoring traffic for privacy threats...")
+            .setSmallIcon(android.R.drawable.ic_menu_compass) // Replace with your app icon
+            .setOngoing(true)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .build()
     }
 
     private fun setupVpn() {
@@ -74,14 +113,13 @@ class TrafficCaptureService : VpnService() {
         val attributionHelper = AppAttributionHelper(this)
 
         serviceScope.launch {
-            // Assign to our global variable so we can assassinate it later
             vpnInputStream = FileInputStream(fd)
             val packet = ByteArray(VpnConfig.MTU_SIZE)
 
             try {
                 while (isActive) {
                     val stream = vpnInputStream ?: break
-                    val length = stream.read(packet) // This blocking call will now be interrupted!
+                    val length = stream.read(packet)
 
                     if (length > 0) {
                         val parsedEvent = PacketParser.parseIPv4Packet(packet, length)
@@ -110,7 +148,6 @@ class TrafficCaptureService : VpnService() {
                     }
                 }
             } catch (e: Exception) {
-                // When we close the stream, it throws an exception here and safely exits the loop
                 Log.d("InnovaVPN", "Interception loop cleanly terminated.")
             }
         }
@@ -121,7 +158,6 @@ class TrafficCaptureService : VpnService() {
             Log.d("InnovaVPN", "Shutting down VPN and cleaning up resources...")
             serviceScope.cancel()
 
-            // Violently close the InputStream to instantly wake up the blocking `read()` call
             vpnInputStream?.close()
             vpnInputStream = null
 

@@ -3,6 +3,7 @@ package com.innova.analyzer.ui.dashboard
 import android.app.Activity
 import android.content.Intent
 import android.net.VpnService
+import android.widget.ImageView
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.animateFloat
@@ -10,27 +11,33 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Android
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.LightMode
-import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Terminal
-import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.innova.analyzer.core.vpn.TrafficCaptureService
+import com.innova.analyzer.data.models.ConnectionProtocol
 import com.innova.analyzer.data.models.NetworkEvent
-import com.innova.analyzer.ui.dashboard.components.NetworkRowItem
 
 @Composable
 fun DashboardScreen(
@@ -38,8 +45,8 @@ fun DashboardScreen(
     isDarkTheme: Boolean = true,
     onThemeToggle: () -> Unit = {}
 ) {
-    val logs by viewModel.trafficLogs.collectAsState()
-    val isVpnActive by viewModel.isVpnActive.collectAsState()
+    val logs by viewModel.trafficLogs.collectAsStateWithLifecycle()
+    val isVpnActive by viewModel.isVpnActive.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
     val vpnPermissionLauncher = rememberLauncherForActivityResult(
@@ -47,36 +54,30 @@ fun DashboardScreen(
     ) { result ->
         if (result.resultCode == Activity.RESULT_OK) {
             val intent = Intent(context, TrafficCaptureService::class.java)
-            context.startService(intent)
+            ContextCompat.startForegroundService(context, intent)
             viewModel.setVpnActive(true)
         }
     }
 
-    // 🚨 The Updated Button Click Handler (With Poison Pill)
     val onToggleVpn = {
         if (isVpnActive) {
-            // FIRE THE POISON PILL!
-            // Notice we use startService() to send a message INTO the running service
             val intent = Intent(context, TrafficCaptureService::class.java).apply {
                 action = "STOP_VPN"
             }
             context.startService(intent)
             viewModel.setVpnActive(false)
-
         } else {
-            // Ask Android OS for permission to turn it on
             val intent = VpnService.prepare(context)
             if (intent != null) {
                 vpnPermissionLauncher.launch(intent)
             } else {
                 val serviceIntent = Intent(context, TrafficCaptureService::class.java)
-                context.startService(serviceIntent)
+                ContextCompat.startForegroundService(context, serviceIntent)
                 viewModel.setVpnActive(true)
             }
         }
     }
 
-    // Elegant Animated Background Orbs
     val infiniteTransition = androidx.compose.animation.core.rememberInfiniteTransition(label = "bg_anim")
     val orbOffset by infiniteTransition.animateFloat(
         initialValue = 0f,
@@ -93,7 +94,6 @@ fun DashboardScreen(
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
     ) {
-        // Render 2 soft glowing orbs to create a dynamic aesthetic
         val primaryColor = MaterialTheme.colorScheme.primary
         val secondaryColor = MaterialTheme.colorScheme.secondary
         val alpha1 = if (isDarkTheme) 0.15f else 0.3f
@@ -102,13 +102,9 @@ fun DashboardScreen(
         androidx.compose.foundation.Canvas(modifier = Modifier.fillMaxSize()) {
             val orbRadius = size.width * 0.8f
 
-            // Orb 1 (Cyan)
             drawCircle(
                 brush = Brush.radialGradient(
-                    colors = listOf(
-                        primaryColor.copy(alpha = alpha1),
-                        Color.Transparent
-                    ),
+                    colors = listOf(primaryColor.copy(alpha = alpha1), Color.Transparent),
                     center = androidx.compose.ui.geometry.Offset(x = orbOffset, y = orbOffset * 0.5f),
                     radius = orbRadius
                 ),
@@ -116,13 +112,9 @@ fun DashboardScreen(
                 radius = orbRadius
             )
 
-            // Orb 2 (Purple)
             drawCircle(
                 brush = Brush.radialGradient(
-                    colors = listOf(
-                        secondaryColor.copy(alpha = alpha2),
-                        Color.Transparent
-                    ),
+                    colors = listOf(secondaryColor.copy(alpha = alpha2), Color.Transparent),
                     center = androidx.compose.ui.geometry.Offset(x = size.width - orbOffset, y = size.height - (orbOffset * 0.8f)),
                     radius = orbRadius * 1.2f
                 ),
@@ -140,10 +132,12 @@ fun DashboardScreen(
                 LazyColumn(
                     modifier = Modifier.weight(1f),
                     contentPadding = PaddingValues(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
+                    // 🟢 FIX: Removed the 'key = { it.id }' which caused crashes because 
+                    // multiple packets have id=0 before database insertion.
                     items(logs) { event ->
-                        NetworkRowItem(event)
+                        NetworkRow(event)
                     }
                 }
             }
@@ -163,12 +157,11 @@ fun DashboardHeader(
         modifier = Modifier
             .fillMaxWidth()
             .padding(16.dp),
-        shape = RoundedCornerShape(24.dp), // More modern, pill-like rounding
+        shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.cardColors(
-            // Glassmorphism effect
             containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
         ),
-        elevation = CardDefaults.cardElevation(0.dp), // Flat integration, relies on stroke and background
+        elevation = CardDefaults.cardElevation(0.dp),
         border = androidx.compose.foundation.BorderStroke(
             width = 1.dp,
             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
@@ -192,7 +185,6 @@ fun DashboardHeader(
                 modifier = Modifier.padding(32.dp).fillMaxWidth(),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                // Elegant Status Dot
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(
                         modifier = Modifier
@@ -229,7 +221,6 @@ fun DashboardHeader(
 
                 Spacer(modifier = Modifier.height(24.dp))
 
-                // Elegant Pill Button
                 Button(
                     onClick = onToggleVpn,
                     modifier = Modifier.height(48.dp).fillMaxWidth(0.6f),
@@ -237,7 +228,7 @@ fun DashboardHeader(
                         containerColor = if (isVpnActive) MaterialTheme.colorScheme.surface else MaterialTheme.colorScheme.primary,
                         contentColor = if (isVpnActive) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onPrimary
                     ),
-                    shape = RoundedCornerShape(50) // Perfect pill
+                    shape = RoundedCornerShape(50)
                 ) {
                     Text(
                         text = if (isVpnActive) "DISCONNECT" else "CONNECT",
@@ -270,5 +261,124 @@ fun EmptyState() {
             style = MaterialTheme.typography.titleMedium,
             letterSpacing = 2.sp
         )
+    }
+}
+
+@Composable
+fun NativeAppIcon(uid: Int, modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    val packageManager = context.packageManager
+
+    val appIconDrawable = remember(uid) {
+        try {
+            if (uid <= 0) null
+            else {
+                val packages = packageManager.getPackagesForUid(uid)
+                if (!packages.isNullOrEmpty()) {
+                    packageManager.getApplicationIcon(packages[0])
+                } else null
+            }
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    if (appIconDrawable != null) {
+        AndroidView(
+            factory = { ctx ->
+                ImageView(ctx).apply {
+                    scaleType = ImageView.ScaleType.FIT_CENTER
+                }
+            },
+            update = { imageView ->
+                imageView.setImageDrawable(appIconDrawable)
+            },
+            modifier = modifier
+        )
+    } else {
+        Icon(
+            imageVector = Icons.Default.Android,
+            contentDescription = "Unknown App",
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = modifier
+        )
+    }
+}
+
+@Composable
+fun NetworkRow(event: NetworkEvent) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+        ),
+        border = if (event.isSuspicious) {
+            androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.5f))
+        } else null
+    ) {
+        Row(
+            modifier = Modifier.padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            NativeAppIcon(
+                uid = event.uid,
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.surface)
+                    .padding(8.dp)
+            )
+
+            Spacer(modifier = Modifier.width(12.dp))
+
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = event.appName ?: event.packageName ?: "System Process",
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = event.domain ?: "${event.destIp}:${event.destPort}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+
+            Column(horizontalAlignment = Alignment.End) {
+                val protocolColor = when (event.protocol) {
+                    ConnectionProtocol.TCP -> Color(0xFF4CAF50)
+                    ConnectionProtocol.UDP -> Color(0xFF2196F3)
+                    ConnectionProtocol.DNS -> Color(0xFFFF9800)
+                    else -> MaterialTheme.colorScheme.onSurfaceVariant
+                }
+
+                Surface(
+                    color = protocolColor.copy(alpha = 0.1f),
+                    shape = RoundedCornerShape(4.dp)
+                ) {
+                    Text(
+                        text = event.protocol.name,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = protocolColor,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(4.dp))
+
+                Text(
+                    text = "${event.payloadSize} B",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
     }
 }
