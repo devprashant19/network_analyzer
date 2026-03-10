@@ -17,10 +17,12 @@ enum class ConnectionProtocol {
  */
 @Entity(tableName = "network_events")
 data class NetworkEvent(
-    @PrimaryKey(autoGenerate = true) val id: Long = 0L,
-
-    // 1. Time & Identity
+    // 1. Connection Identity (Stable hash of protocol/ips/ports)
+    @PrimaryKey val connectionKey: String,
+    
+    // 2. Time & Identity
     val timestamp: Long = System.currentTimeMillis(),
+    val lastActive: Long = System.currentTimeMillis(),
     val uid: Int,
     val packageName: String?,
     val appName: String?,
@@ -34,7 +36,9 @@ data class NetworkEvent(
 
     // 3. Application Layer (The Magic)
     val domain: String?,
-    val payloadSize: Int,
+    // The total traffic for this entire connection flow
+    val totalBytes: Long,
+    val packetCount: Int = 1,
 
     // 4. Threat Analytics
     val isSuspicious: Boolean = false

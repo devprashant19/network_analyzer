@@ -80,7 +80,10 @@ object PacketParser {
             }
         }
 
+        val connKey = "${protocol.ordinal}:$sourceIp:$sourcePort:$destIp:$destPort"
+
         return NetworkEvent(
+            connectionKey = connKey,
             uid = -1,
             packageName = null,
             appName = null,
@@ -90,7 +93,8 @@ object PacketParser {
             destIp = destIp,
             destPort = destPort,
             domain = extractedDomain,
-            payloadSize = payloadSize,
+            totalBytes = payloadSize.toLong(),
+            packetCount = 1,
             isSuspicious = isThreat // 🔴 IT WILL BE TRUE NOW!
         )
     }

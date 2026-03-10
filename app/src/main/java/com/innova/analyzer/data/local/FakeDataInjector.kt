@@ -11,20 +11,30 @@ object FakeDataInjector {
         val domains = listOf("google.com", "facebook.com", "api.tracker.com", "ads.xyz")
 
         while (true) {
-            val fakeEvent = NetworkEvent(
+            val sourceIp = "192.168.1.${Random.nextInt(1, 255)}"
+            val sourcePort = Random.nextInt(1024, 65535)
+            val destIp = "172.217.${Random.nextInt(1, 255)}.${Random.nextInt(1, 255)}"
+            val destPort = 443
+            val domain = domains.random()
+            val totalBytes = Random.nextInt(100, 5000).toLong()
+            val protocol = protocols.random()
+            val connKey = "${protocol.ordinal}:$sourceIp:$sourcePort:$destIp:$destPort"
+
+            dao.upsertEvent(
+                key = connKey,
+                time = System.currentTimeMillis(),
                 uid = 1000,
-                packageName = "com.android.chrome",
-                appName = "Chrome",
-                protocol = protocols.random(),
-                sourceIp = "192.168.1.${Random.nextInt(1, 255)}",
-                sourcePort = Random.nextInt(1024, 65535),
-                destIp = "172.217.${Random.nextInt(1, 255)}.${Random.nextInt(1, 255)}",
-                destPort = 443,
-                domain = domains.random(),
-                payloadSize = Random.nextInt(100, 5000),
-                isSuspicious = Random.nextBoolean()
+                pkg = "com.android.chrome",
+                app = "Chrome",
+                proto = protocol.name,
+                srcIp = sourceIp,
+                srcPort = sourcePort,
+                dstIp = destIp,
+                dstPort = destPort,
+                domain = domain,
+                bytes = totalBytes,
+                susp = Random.nextBoolean()
             )
-            dao.insertEvent(fakeEvent)
             delay(2000) // 2-second heartbeat
         }
     }

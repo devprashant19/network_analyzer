@@ -427,7 +427,7 @@ fun NetworkRow(event: NetworkEvent) {
                 Spacer(modifier = Modifier.height(4.dp))
 
                 Text(
-                    text = "$timeString • ${event.payloadSize} B",
+                    text = "$timeString • ${event.totalBytes} B • ${event.packetCount} pkts",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

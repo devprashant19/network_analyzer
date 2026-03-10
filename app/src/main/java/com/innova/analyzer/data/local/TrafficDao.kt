@@ -8,12 +8,23 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface TrafficDao {
-    // 🥷 Backend Ninja uses this to save packets
-    @Insert
-    suspend fun insertEvent(event: NetworkEvent)
+    // 🥷 Backend Ninja uses this to save packets via UPSERT aggregation
+    @Query("""
+        INSERT INTO network_events (connectionKey, timestamp, lastActive, uid, packageName, appName, protocol, sourceIp, sourcePort, destIp, destPort, domain, totalBytes, packetCount, isSuspicious)
+        VALUES (:key, :time, :time, :uid, :pkg, :app, :proto, :srcIp, :srcPort, :dstIp, :dstPort, :domain, :bytes, 1, :susp)
+        ON CONFLICT(connectionKey) DO UPDATE SET
+            totalBytes = totalBytes + :bytes,
+            packetCount = packetCount + 1,
+            lastActive = :time
+    """)
+    suspend fun upsertEvent(
+        key: String, time: Long, uid: Int, pkg: String?, app: String?, proto: String,
+        srcIp: String, srcPort: Int, dstIp: String, dstPort: Int, domain: String?,
+        bytes: Long, susp: Boolean
+    )
 
     // 🟢 The Boot Loader: Grabs history instantly when the app opens!
-    @Query("SELECT * FROM network_events ORDER BY timestamp DESC LIMIT 1000")
+    @Query("SELECT * FROM network_events ORDER BY lastActive DESC LIMIT 1000")
     suspend fun getRecentLogs(): List<NetworkEvent>
 
     // 🟢 The True Counter: Gets the actual all-time total across app restarts!
@@ -25,6 +36,6 @@ interface TrafficDao {
     suspend fun clearAll()
 
     // 🎨 Frontend Wrangler uses this to auto-update the UI (Legacy Flow)
-    @Query("SELECT * FROM network_events ORDER BY timestamp DESC")
+    @Query("SELECT * FROM network_events ORDER BY lastActive DESC")
     fun getLiveTraffic(): Flow<List<NetworkEvent>>
 }

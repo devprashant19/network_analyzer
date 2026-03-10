@@ -99,7 +99,7 @@ fun NetworkRowItem(event: NetworkEvent) {
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
                     // Added protocol to the subtitle so it's always visible even with the app icon
-                    text = "${event.appName ?: "Unknown Process"} • ${event.protocol.name} • ${event.payloadSize} B",
+                    text = "${event.appName ?: "Unknown Process"} • ${event.protocol.name} • ${event.totalBytes} B • ${event.packetCount} pkts",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
                 )

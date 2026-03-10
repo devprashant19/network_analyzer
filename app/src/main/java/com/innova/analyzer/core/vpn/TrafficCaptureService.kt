@@ -9,26 +9,37 @@ import android.content.Intent
 import android.net.VpnService
 import android.os.Build
 import android.os.ParcelFileDescriptor
+import android.system.Os
+import android.system.OsConstants
 import android.util.Log
 import androidx.core.app.NotificationCompat
-import com.innova.analyzer.MainActivity // Make sure this matches your package name
+import com.innova.analyzer.MainActivity
 import com.innova.analyzer.core.network.PacketParser
 import com.innova.analyzer.core.network.TrafficStream
-import com.innova.analyzer.core.threats.ThreatEngine // 🟢 IMPORT THE ENGINE
+import com.innova.analyzer.core.network.nio.ByteBufferPool
+import com.innova.analyzer.core.network.nio.Packet
+import com.innova.analyzer.core.network.nio.TCPInput
+import com.innova.analyzer.core.network.nio.TCPOutput
+import com.innova.analyzer.core.network.nio.Tcb
+import com.innova.analyzer.core.network.nio.UDPInput
+import com.innova.analyzer.core.network.nio.UDPOutput
+import com.innova.analyzer.core.threats.ThreatEngine
 import com.innova.analyzer.data.attribution.AppAttributionHelper
 import com.innova.analyzer.data.local.TrafficDatabase
 import kotlinx.coroutines.*
 import java.io.FileInputStream
+import java.io.FileOutputStream
+import java.nio.channels.Selector
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.ConcurrentLinkedQueue
+import java.util.concurrent.Executors
 
 class TrafficCaptureService : VpnService() {
 
     private var vpnInterface: ParcelFileDescriptor? = null
-    private var vpnInputStream: FileInputStream? = null
 
     private val serviceScope = CoroutineScope(Dispatchers.IO + Job())
 
-    // 🟢 THE ENTERPRISE CACHE: Prevents the CPU from melting during heavy traffic
     private val uidCache = ConcurrentHashMap<String, Int>()
 
     companion object {
@@ -44,15 +55,14 @@ class TrafficCaptureService : VpnService() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == "STOP_VPN") {
-            Log.d("InnovaVPN", "Kill switch received. Committing system shutdown.")
+            Log.d("InnovaVPN", "Kill switch received. Shutting down.")
             stopVpn()
             stopForeground(true)
             stopSelf()
             return START_NOT_STICKY
         }
-
         setupVpn()
-        return START_STICKY // Tells Android: "If you kill me for RAM, restart me immediately!"
+        return START_STICKY
     }
 
     override fun onDestroy() {
@@ -63,51 +73,55 @@ class TrafficCaptureService : VpnService() {
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
-                CHANNEL_ID,
-                "Threat Interception Active",
-                NotificationManager.IMPORTANCE_LOW // Low = No annoying buzzing
-            ).apply {
-                description = "Actively monitoring background network traffic."
-            }
-            val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            manager.createNotificationChannel(channel)
+                CHANNEL_ID, "Threat Interception Active", NotificationManager.IMPORTANCE_LOW
+            ).apply { description = "Actively monitoring background network traffic." }
+            (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager)
+                .createNotificationChannel(channel)
         }
     }
 
     private fun createNotification(): Notification {
-        // 🟢 POLISH: Tapping the notification opens the app!
         val pendingIntent = PendingIntent.getActivity(
             this, 0, Intent(this, MainActivity::class.java),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("🛡️ Innova Firewall Active")
             .setContentText("Monitoring traffic for privacy threats...")
             .setSmallIcon(android.R.drawable.ic_secure)
-            .setContentIntent(pendingIntent) // Links the notification to the app
-            .setOngoing(true) // Cannot be swiped away
+            .setContentIntent(pendingIntent)
+            .setOngoing(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .build()
     }
 
     private fun setupVpn() {
         if (vpnInterface != null) return
-
         try {
             val builder = Builder()
             builder.addAddress(VpnConfig.LOCAL_IP, VpnConfig.LOCAL_PREFIX_LENGTH)
             builder.addRoute(VpnConfig.ROUTE_ADDRESS, VpnConfig.ROUTE_PREFIX_LENGTH)
             builder.setSession(VpnConfig.SESSION_NAME)
             builder.setMtu(VpnConfig.MTU_SIZE)
-            builder.setBlocking(true)
-
+            // setBlocking(true) requires API 29+ — skip it; FileInputStream.read() blocks natively
+            // on the tun fd via the read() syscall. setBlocking would use the ioctl FIONBIO approach.
             builder.addDnsServer(VpnConfig.PRIMARY_DNS)
             builder.addDnsServer(VpnConfig.SECONDARY_DNS)
-
             vpnInterface = builder.establish()
 
             if (vpnInterface != null) {
+                // Set the tun fd to BLOCKING mode using fcntl (works API 21+).
+                // VpnService.Builder always sets the fd non-blocking by default.
+                // Without this, FileInputStream.read() spins on EAGAIN and packets are delivered
+                // unreliably. This is the API 21-compatible equivalent of setBlocking(true).
+                try {
+                    val tunFd = vpnInterface!!.fileDescriptor
+                    val flags = Os.fcntlInt(tunFd, OsConstants.F_GETFL, 0)
+                    Os.fcntlInt(tunFd, OsConstants.F_SETFL, flags and OsConstants.O_NONBLOCK.inv())
+                    Log.d("InnovaVPN", "tun fd set to blocking mode (flags=${flags and OsConstants.O_NONBLOCK.inv()})")
+                } catch (e: Exception) {
+                    Log.w("InnovaVPN", "fcntl blocking failed (continuing): ${e.message}")
+                }
                 Log.d("InnovaVPN", "VPN Tunnel established successfully.")
                 startIntercepting()
             } else {
@@ -121,84 +135,138 @@ class TrafficCaptureService : VpnService() {
     }
 
     private fun startIntercepting() {
-        Log.d("InnovaVPN", "Traffic interception started.")
+        Log.d("InnovaVPN", "Starting NIO traffic interception.")
 
         val fd = vpnInterface?.fileDescriptor ?: return
         val dao = TrafficDatabase.getDatabase(this).trafficDao()
         val attributionHelper = AppAttributionHelper(this)
+        val threatEngine = ThreatEngine(this).also { it.loadBlocklist() }
 
-        // 🟢 1. INITIALIZE AND LOAD THE THREAT ENGINE
-        val threatEngine = ThreatEngine(this)
-        threatEngine.loadBlocklist()
+        // Three queues that connect the 5 workers
+        val deviceToNetworkUDPQueue = ConcurrentLinkedQueue<Packet>()
+        val deviceToNetworkTCPQueue = ConcurrentLinkedQueue<Packet>()
+        val networkToDeviceQueue = ConcurrentLinkedQueue<ByteArray>()
 
+        val udpSelector = Selector.open()
+        val tcpSelector = Selector.open()
+
+        // Thread pool for the 4 NIO worker threads
+        val executor = Executors.newFixedThreadPool(4)
+        executor.submit(UDPOutput(deviceToNetworkUDPQueue, udpSelector, this))
+        executor.submit(UDPInput(networkToDeviceQueue, udpSelector))
+        executor.submit(TCPOutput(deviceToNetworkTCPQueue, networkToDeviceQueue, tcpSelector, this))
+        executor.submit(TCPInput(networkToDeviceQueue, tcpSelector))
+
+        // Plain FileOutputStream — uses write() syscall directly on the tun character device.
+        // DO NOT use .channel here: NIO FileChannel calls pwrite() which fails with ESPIPE
+        // on a non-seekable character device like the tun fd.
+        val vpnOutput = FileOutputStream(fd)
         serviceScope.launch {
-            vpnInputStream = FileInputStream(fd)
-            val packet = ByteArray(VpnConfig.MTU_SIZE)
-
             try {
                 while (isActive) {
-                    val stream = vpnInputStream ?: break
-                    val length = stream.read(packet)
-
-                    if (length > 0) {
-                        // Lightning fast byte extraction
-                        val parsedEvent = PacketParser.parseIPv4Packet(packet, length)
-
-                        if (parsedEvent != null) {
-
-                            // THE CACHE LOOKUP ($O(1)$ Time Complexity)
-                            val connectionKey = "${parsedEvent.protocol.ordinal}:${parsedEvent.sourceIp}:${parsedEvent.sourcePort}:${parsedEvent.destIp}:${parsedEvent.destPort}"
-
-                            val realUid = uidCache.getOrPut(connectionKey) {
-                                // Only ask the slow OS if we haven't seen this connection before!
-                                attributionHelper.getConnectionUid(
-                                    protocolNum = parsedEvent.protocol.ordinal,
-                                    sourceIp = parsedEvent.sourceIp,
-                                    sourcePort = parsedEvent.sourcePort,
-                                    destIp = parsedEvent.destIp,
-                                    destPort = parsedEvent.destPort
-                                )
-                            }
-
-                            val realAppName = attributionHelper.getAppName(realUid)
-                            val realPackageName = attributionHelper.getPackageName(realUid)
-
-                            val finalizedEvent = parsedEvent.copy(
-                                uid = realUid,
-                                appName = realAppName,
-                                packageName = realPackageName
-                            )
-
-                            // 🟢 2. PASS IT THROUGH THE THREAT ENGINE
-                            // This checks the Trie, flags `isSuspicious = true` if it's a tracker,
-                            // and safely fires the Android notification using our Cooldown Map.
-                            val evaluatedEvent = threatEngine.evaluatePacket(finalizedEvent)
-
-                            // 3. Emit the EVALUATED event to the UI (Flow handles its own async)
-                            TrafficStream.emitEvent(evaluatedEvent)
-
-                            // 4. ASYNC DATABASE WRITE (Prevents VPN from lagging)
-                            launch {
-                                dao.insertEvent(evaluatedEvent)
-                            }
-                        }
+                    val outPkt = networkToDeviceQueue.poll()
+                    if (outPkt != null) {
+                        vpnOutput.write(outPkt)
+                        Log.v("InnovaVPN", "tun write ${outPkt.size} bytes")
+                    } else {
+                        delay(1) // Yield CPU when nothing to write
                     }
                 }
             } catch (e: Exception) {
-                Log.d("InnovaVPN", "Interception loop cleanly terminated.")
+                Log.d("InnovaVPN", "Write loop terminated: ${e.message}")
+            } finally {
+                vpnOutput.close()
+            }
+        }
+
+        // Plain FileInputStream — uses read() syscall directly on the tun character device.
+        // DO NOT use .channel: NIO FileChannel calls pread() which fails with ESPIPE.
+        serviceScope.launch {
+            val vpnInput = FileInputStream(fd)
+            val rawBuf = ByteArray(VpnConfig.MTU_SIZE)
+            try {
+                while (isActive) {
+                    val length = vpnInput.read(rawBuf)
+                    if (length <= 0) { Thread.yield(); continue }
+                    Log.v("InnovaVPN", "tun read $length bytes proto=${rawBuf[9].toInt() and 0xFF}")
+
+                    // ----- Monitoring path (PacketParser → ThreatEngine → DB) -----
+                    try {
+                        val parsedEvent = PacketParser.parseIPv4Packet(rawBuf, length)
+                        if (parsedEvent != null) {
+                            val connectionKey = "${parsedEvent.protocol.ordinal}:${parsedEvent.sourceIp}:" +
+                                    "${parsedEvent.sourcePort}:${parsedEvent.destIp}:${parsedEvent.destPort}"
+                            val realUid = uidCache.getOrPut(connectionKey) {
+                                attributionHelper.getConnectionUid(
+                                    parsedEvent.protocol.ordinal,
+                                    parsedEvent.sourceIp, parsedEvent.sourcePort,
+                                    parsedEvent.destIp, parsedEvent.destPort
+                                )
+                            }
+                            val finalizedEvent = parsedEvent.copy(
+                                uid = realUid,
+                                appName = attributionHelper.getAppName(realUid),
+                                packageName = attributionHelper.getPackageName(realUid)
+                            )
+                            val evaluatedEvent = threatEngine.evaluatePacket(finalizedEvent)
+                            TrafficStream.emitEvent(evaluatedEvent)
+                            launch { 
+                                dao.upsertEvent(
+                                    key = evaluatedEvent.connectionKey,
+                                    time = System.currentTimeMillis(),
+                                    uid = evaluatedEvent.uid,
+                                    pkg = evaluatedEvent.packageName,
+                                    app = evaluatedEvent.appName,
+                                    proto = evaluatedEvent.protocol.name,
+                                    srcIp = evaluatedEvent.sourceIp,
+                                    srcPort = evaluatedEvent.sourcePort,
+                                    dstIp = evaluatedEvent.destIp,
+                                    dstPort = evaluatedEvent.destPort,
+                                    domain = evaluatedEvent.domain,
+                                    bytes = evaluatedEvent.totalBytes,
+                                    susp = evaluatedEvent.isSuspicious
+                                ) 
+                            }
+                        }
+                    } catch (e: Exception) {
+                        Log.e("InnovaVPN", "Monitoring error (packet forwarded anyway): ${e.message}")
+                    }
+
+                    // ----- Forwarding path (NIO queues) -----
+                    val packetBuffer = ByteBufferPool.acquire()
+                    packetBuffer.put(rawBuf, 0, length)
+                    packetBuffer.flip()
+                    try {
+                        val packet = Packet(packetBuffer)
+                        when {
+                            packet.isUDP() -> deviceToNetworkUDPQueue.offer(packet)
+                            packet.isTCP() -> deviceToNetworkTCPQueue.offer(packet)
+                            else -> ByteBufferPool.release(packetBuffer)
+                        }
+                    } catch (e: Exception) {
+                        Log.e("InnovaVPN", "Packet parse error: ${e.message}", e)
+                        ByteBufferPool.release(packetBuffer)
+                    }
+                }
+            } catch (e: Exception) {
+                Log.d("InnovaVPN", "Read loop terminated: ${e.message}")
+            } finally {
+                executor.shutdownNow()
+                udpSelector.close()
+                tcpSelector.close()
+                ByteBufferPool.clear()
+                Tcb.closeAll()
+                vpnInput.close()
             }
         }
     }
+
 
     private fun stopVpn() {
         try {
             Log.d("InnovaVPN", "Shutting down VPN and cleaning up resources...")
             serviceScope.cancel()
-            uidCache.clear() // Free up RAM when VPN turns off
-
-            vpnInputStream?.close()
-            vpnInputStream = null
-
+            uidCache.clear()
             vpnInterface?.close()
             vpnInterface = null
         } catch (e: Exception) {

@@ -213,7 +213,8 @@ fun AlertsScreen(viewModel: DashboardViewModel) {
                             destPort = 443,
                             protocol = ConnectionProtocol.UDP,
                             domain = "api.malicious-tracker.com",
-                            payloadSize = 512,
+                            connectionKey = "test",
+                            totalBytes = 512L,
                             timestamp = System.currentTimeMillis(),
                             isSuspicious = true, // Triggers the UI and logic
                             sourceIp = "10.0.0.1",

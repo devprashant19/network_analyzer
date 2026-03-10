@@ -6,7 +6,7 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 import com.innova.analyzer.data.models.NetworkEvent
 
-@Database(entities = [NetworkEvent::class], version = 1, exportSchema = false)
+@Database(entities = [NetworkEvent::class], version = 2, exportSchema = false)
 abstract class TrafficDatabase : RoomDatabase() {
 
     abstract fun trafficDao(): TrafficDao
