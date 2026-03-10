@@ -31,7 +31,7 @@ fun NetworkRowItem(event: NetworkEvent) {
     val protocolColor = when (event.protocol) {
         ConnectionProtocol.TCP -> MaterialTheme.colorScheme.primary // Cyan
         ConnectionProtocol.UDP -> MaterialTheme.colorScheme.secondary // Purple
-        ConnectionProtocol.HTTPS -> Color(0xFF00FF7F) // Spring Green for HTTPS
+        ConnectionProtocol.HTTPS -> MaterialTheme.colorScheme.tertiary // Theme aware for HTTPS
         else -> MaterialTheme.colorScheme.onSurfaceVariant // Grey
     }
 

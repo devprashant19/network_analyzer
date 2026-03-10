@@ -15,8 +15,10 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Android
+import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.LightMode
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material3.*
@@ -32,12 +34,16 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.zIndex
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.innova.analyzer.core.vpn.TrafficCaptureService
 import com.innova.analyzer.data.models.ConnectionProtocol
 import com.innova.analyzer.data.models.NetworkEvent
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 @Composable
 fun DashboardScreen(
@@ -124,7 +130,10 @@ fun DashboardScreen(
         }
 
         Column(modifier = Modifier.fillMaxSize()) {
-            DashboardHeader(logs.size, isDarkTheme, isVpnActive, onThemeToggle, onToggleVpn)
+            // Keep the Header above the list
+            Box(modifier = Modifier.zIndex(1f)) {
+                DashboardHeader(logs.size, isDarkTheme, isVpnActive, onThemeToggle, onToggleVpn)
+            }
 
             if (logs.isEmpty()) {
                 EmptyState()
@@ -134,8 +143,6 @@ fun DashboardScreen(
                     contentPadding = PaddingValues(16.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    // 🟢 FIX: Removed the 'key = { it.id }' which caused crashes because 
-                    // multiple packets have id=0 before database insertion.
                     items(logs) { event ->
                         NetworkRow(event)
                     }
@@ -305,16 +312,25 @@ fun NativeAppIcon(uid: Int, modifier: Modifier = Modifier) {
     }
 }
 
+// 🟢 NEW: Upgraded NetworkRow with Timestamps and Threat Indicators!
 @Composable
 fun NetworkRow(event: NetworkEvent) {
+    val isDangerous = event.isSuspicious
+
+    // Format the timestamp (e.g., 14:32:05)
+    val timeString = remember(event.timestamp) {
+        val sdf = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
+        sdf.format(Date(event.timestamp))
+    }
+
     Card(
-        modifier = Modifier
-            .fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+            containerColor = if (isDangerous) MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.15f)
+            else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
         ),
-        border = if (event.isSuspicious) {
+        border = if (isDangerous) {
             androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.5f))
         } else null
     ) {
@@ -322,14 +338,24 @@ fun NetworkRow(event: NetworkEvent) {
             modifier = Modifier.padding(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            NativeAppIcon(
-                uid = event.uid,
+            Box(
                 modifier = Modifier
                     .size(40.dp)
                     .clip(CircleShape)
                     .background(MaterialTheme.colorScheme.surface)
-                    .padding(8.dp)
-            )
+                    .padding(8.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                if (event.appName != null) {
+                    NativeAppIcon(uid = event.uid, modifier = Modifier.fillMaxSize())
+                } else {
+                    Icon(
+                        imageVector = Icons.Default.Public,
+                        contentDescription = "Web",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
 
             Spacer(modifier = Modifier.width(12.dp))
 
@@ -337,6 +363,7 @@ fun NetworkRow(event: NetworkEvent) {
                 Text(
                     text = event.appName ?: event.packageName ?: "System Process",
                     style = MaterialTheme.typography.bodyLarge,
+                    color = if (isDangerous) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
                     fontWeight = FontWeight.Bold,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
@@ -350,31 +377,52 @@ fun NetworkRow(event: NetworkEvent) {
                 )
             }
 
+            // Right side: Protocol, Timestamp, and Icons
             Column(horizontalAlignment = Alignment.End) {
                 val protocolColor = when (event.protocol) {
-                    ConnectionProtocol.TCP -> Color(0xFF4CAF50)
-                    ConnectionProtocol.UDP -> Color(0xFF2196F3)
-                    ConnectionProtocol.DNS -> Color(0xFFFF9800)
+                    ConnectionProtocol.TCP -> MaterialTheme.colorScheme.onSurfaceVariant
+                    ConnectionProtocol.UDP -> MaterialTheme.colorScheme.secondary
+                    ConnectionProtocol.DNS -> MaterialTheme.colorScheme.tertiary
                     else -> MaterialTheme.colorScheme.onSurfaceVariant
                 }
 
-                Surface(
-                    color = protocolColor.copy(alpha = 0.1f),
-                    shape = RoundedCornerShape(4.dp)
-                ) {
-                    Text(
-                        text = event.protocol.name,
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = protocolColor,
-                        fontWeight = FontWeight.Bold
-                    )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Surface(
+                        color = protocolColor.copy(alpha = 0.1f),
+                        shape = RoundedCornerShape(4.dp)
+                    ) {
+                        Text(
+                            text = event.protocol.name,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = protocolColor,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.width(6.dp))
+
+                    if (isDangerous) {
+                        Icon(
+                            imageVector = Icons.Default.BugReport,
+                            contentDescription = "Threat",
+                            tint = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    } else if (event.destPort == 443) {
+                        Icon(
+                            imageVector = Icons.Default.Lock,
+                            contentDescription = "Secure",
+                            tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
+                            modifier = Modifier.size(14.dp)
+                        )
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(4.dp))
 
                 Text(
-                    text = "${event.payloadSize} B",
+                    text = "$timeString • ${event.payloadSize} B",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

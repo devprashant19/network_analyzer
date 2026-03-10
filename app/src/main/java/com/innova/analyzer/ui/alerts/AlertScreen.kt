@@ -118,12 +118,12 @@ fun AlertsScreen() {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFF121212))
+            .background(MaterialTheme.colorScheme.background)
             .padding(16.dp)
     ) {
         Text(
             text = "Threat Alerts & Rules",
-            color = Color.White,
+            color = MaterialTheme.colorScheme.onBackground,
             fontSize = 28.sp,
             fontWeight = FontWeight.Bold,
             modifier = Modifier.padding(bottom = 16.dp, top = 8.dp)
@@ -132,7 +132,7 @@ fun AlertsScreen() {
         // --- SECTION 1: System Toggles ---
         Card(
             shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1E1E)),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)),
             modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
@@ -142,18 +142,17 @@ fun AlertsScreen() {
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.NotificationsActive, contentDescription = "Alerts", tint = Color(0xFF00E676))
+                        Icon(Icons.Default.NotificationsActive, contentDescription = "Alerts", tint = MaterialTheme.colorScheme.primary)
                         Spacer(modifier = Modifier.width(12.dp))
-                        Text("Push Notifications", color = Color.White, fontSize = 16.sp)
+                        Text("Push Notifications", color = MaterialTheme.colorScheme.onSurface, fontSize = 16.sp)
                     }
                     Switch(
                         checked = pushNotificationsEnabled,
-                        onCheckedChange = { pushNotificationsEnabled = it },
-                        colors = SwitchDefaults.colors(checkedThumbColor = Color(0xFF00E676))
+                        onCheckedChange = { pushNotificationsEnabled = it }
                     )
                 }
 
-                HorizontalDivider(color = Color.DarkGray, modifier = Modifier.padding(vertical = 12.dp))
+                HorizontalDivider(color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f), modifier = Modifier.padding(vertical = 12.dp))
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -161,17 +160,20 @@ fun AlertsScreen() {
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.Security, contentDescription = "Strict Mode", tint = Color(0xFFFF1744))
+                        Icon(Icons.Default.Security, contentDescription = "Strict Mode", tint = MaterialTheme.colorScheme.error)
                         Spacer(modifier = Modifier.width(12.dp))
                         Column {
-                            Text("Strict Mode", color = Color.White, fontSize = 16.sp)
-                            Text("Drop unknown UDP traffic", color = Color.Gray, fontSize = 12.sp)
+                            Text("Strict Mode", color = MaterialTheme.colorScheme.onSurface, fontSize = 16.sp)
+                            Text("Drop unknown UDP traffic", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
                         }
                     }
                     Switch(
                         checked = strictModeEnabled,
                         onCheckedChange = { strictModeEnabled = it },
-                        colors = SwitchDefaults.colors(checkedThumbColor = Color(0xFFFF1744))
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = MaterialTheme.colorScheme.onError,
+                            checkedTrackColor = MaterialTheme.colorScheme.error
+                        )
                     )
                 }
             }
@@ -180,20 +182,20 @@ fun AlertsScreen() {
         // --- SECTION 2: Custom Blocklist Input ---
         Card(
             shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1E1E)),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)),
             modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
                 OutlinedTextField(
                     value = customDomainInput,
                     onValueChange = { customDomainInput = it },
-                    label = { Text("Add Custom Rule (e.g., evil.com)", color = Color.Gray) },
+                    label = { Text("Add Custom Rule (e.g., evil.com)", color = MaterialTheme.colorScheme.onSurfaceVariant) },
                     singleLine = true,
                     colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = Color(0xFF00E676),
-                        unfocusedBorderColor = Color.DarkGray,
-                        focusedTextColor = Color.White,
-                        unfocusedTextColor = Color.White
+                        focusedBorderColor = MaterialTheme.colorScheme.primary,
+                        unfocusedBorderColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                        focusedTextColor = MaterialTheme.colorScheme.onSurface,
+                        unfocusedTextColor = MaterialTheme.colorScheme.onSurface
                     ),
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -235,13 +237,13 @@ fun AlertsScreen() {
                             }
                         }
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00E676)),
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(8.dp)
                 ) {
-                    Icon(Icons.Default.AddModerator, contentDescription = "Add Rule", tint = Color.Black)
+                    Icon(Icons.Default.AddModerator, contentDescription = "Add Rule", tint = MaterialTheme.colorScheme.onPrimary)
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("Add Rule", color = Color.Black, fontWeight = FontWeight.Bold)
+                    Text("Add Rule", color = MaterialTheme.colorScheme.onPrimary, fontWeight = FontWeight.Bold)
                 }
 
                 // 🟢 NEW: HACKATHON DEMO BUTTON
@@ -268,13 +270,13 @@ fun AlertsScreen() {
                             TrafficStream.emitEvent(fakeThreat)
                         }
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF1744)), // Red
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(8.dp)
                 ) {
-                    Icon(Icons.Default.Security, contentDescription = "Simulate", tint = Color.White)
+                    Icon(Icons.Default.Security, contentDescription = "Simulate", tint = MaterialTheme.colorScheme.onError)
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("Simulate Live Threat (Demo)", color = Color.White, fontWeight = FontWeight.Bold)
+                    Text("Simulate Live Threat (Demo)", color = MaterialTheme.colorScheme.onError, fontWeight = FontWeight.Bold)
                 }
             }
         }
@@ -282,7 +284,7 @@ fun AlertsScreen() {
         // --- SECTION 3: Live Blocked Feed ---
         Text(
             text = "Live Blocked Feed",
-            color = Color.White,
+            color = MaterialTheme.colorScheme.onBackground,
             fontSize = 18.sp,
             fontWeight = FontWeight.SemiBold,
             modifier = Modifier.padding(bottom = 8.dp)
@@ -302,8 +304,9 @@ fun AlertsScreen() {
 fun BlockedTrafficCard(event: NetworkEvent) {
     Card(
         shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF2C2C2C)),
-        modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)),
+        modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.3f))
     ) {
         Row(
             modifier = Modifier.padding(12.dp).fillMaxWidth(),
@@ -313,13 +316,13 @@ fun BlockedTrafficCard(event: NetworkEvent) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = event.appName ?: "Background Process",
-                    color = Color.White,
+                    color = MaterialTheme.colorScheme.onSurface,
                     fontWeight = FontWeight.Bold,
                     fontSize = 14.sp
                 )
                 Text(
                     text = event.domain ?: event.destIp,
-                    color = Color.Gray,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontSize = 12.sp,
                     maxLines = 1
                 )
@@ -328,14 +331,14 @@ fun BlockedTrafficCard(event: NetworkEvent) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
-                    .background(Color(0x33FF1744), RoundedCornerShape(8.dp))
+                    .background(MaterialTheme.colorScheme.error.copy(alpha = 0.15f), RoundedCornerShape(8.dp))
                     .padding(horizontal = 8.dp, vertical = 4.dp)
             ) {
-                Icon(Icons.Default.Block, contentDescription = "Blocked", tint = Color(0xFFFF1744), modifier = Modifier.size(14.dp))
+                Icon(Icons.Default.Block, contentDescription = "Blocked", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(14.dp))
                 Spacer(modifier = Modifier.width(4.dp))
                 Text(
                     text = event.protocol.name,
-                    color = Color(0xFFFF1744),
+                    color = MaterialTheme.colorScheme.error,
                     fontSize = 10.sp,
                     fontWeight = FontWeight.Bold
                 )

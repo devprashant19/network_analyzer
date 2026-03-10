@@ -309,15 +309,15 @@ fun AppDetailReport(summary: AppSummary, onBackClick: () -> Unit) {
         }
 
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            StatBox(title = "Packets", value = summary.totalPackets.toString(), color = Color(0xFF29B6F6), modifier = Modifier.weight(1f))
+            StatBox(title = "Packets", value = summary.totalPackets.toString(), color = MaterialTheme.colorScheme.primary, modifier = Modifier.weight(1f))
             StatBox(title = "Blocked", value = summary.threats.toString(), color = MaterialTheme.colorScheme.error, modifier = Modifier.weight(1f))
         }
         Spacer(modifier = Modifier.height(8.dp))
 
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             StatBox(title = "TCP", value = summary.tcpCount.toString(), color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
-            StatBox(title = "UDP", value = summary.udpCount.toString(), color = Color(0xFFFF9100), modifier = Modifier.weight(1f))
-            StatBox(title = "DNS", value = summary.dnsCount.toString(), color = Color(0xFF00E676), modifier = Modifier.weight(1f))
+            StatBox(title = "UDP", value = summary.udpCount.toString(), color = MaterialTheme.colorScheme.secondary, modifier = Modifier.weight(1f))
+            StatBox(title = "DNS", value = summary.dnsCount.toString(), color = MaterialTheme.colorScheme.tertiary, modifier = Modifier.weight(1f))
         }
 
         Spacer(modifier = Modifier.height(24.dp))
@@ -425,7 +425,13 @@ fun TopAppsChartCard(topApps: List<AppSummary>) {
 @Composable
 fun ProtocolPieChartCard(counts: List<Int>) {
     val labels = listOf("TCP", "UDP", "DNS", "HTTPS", "HTTP")
-    val colors = listOf(Color(0xFFBDBDBD), Color(0xFFFF9100), Color(0xFF29B6F6), Color(0xFF00E676), Color(0xFFFF1744))
+    val colors = listOf(
+        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha=0.6f),
+        MaterialTheme.colorScheme.secondary,
+        MaterialTheme.colorScheme.tertiary,
+        MaterialTheme.colorScheme.primary,
+        MaterialTheme.colorScheme.error
+    )
     Card(shape = RoundedCornerShape(16.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)), modifier = Modifier.fillMaxWidth()) {
         Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(modifier = Modifier.size(100.dp), contentAlignment = Alignment.Center) {
