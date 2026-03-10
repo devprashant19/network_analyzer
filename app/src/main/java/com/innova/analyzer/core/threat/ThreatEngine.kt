@@ -2,8 +2,11 @@ package com.innova.analyzer.core.threats
 
 import android.content.Context
 import android.util.Log
+import com.innova.analyzer.core.notifications.NotificationHelper
+import com.innova.analyzer.data.models.NetworkEvent
 import java.io.BufferedReader
 import java.io.InputStreamReader
+import java.util.concurrent.ConcurrentHashMap
 
 class TrieNode {
     val children = HashMap<Char, TrieNode>()
@@ -15,8 +18,12 @@ class ThreatEngine(private val context: Context) {
     var isReady = false
         private set
 
+    // 🟢 The Spam Filter & Notification Engine
+    private val notificationHelper = NotificationHelper(context)
+    private val notificationCooldown = ConcurrentHashMap<String, Long>()
+    private val COOLDOWN_TIME_MS = 5 * 60 * 1000L // 5 minutes
+
     // 🚨 THE HACKATHON FAILSAFE: Hardcoded worst offenders
-    // If the text file fails to load, these will guarantee your demo works!
     private val failsafeTrackers = listOf(
         "google-analytics.com", "graph.facebook.com", "app-measurement.com",
         "applovin.com", "unity3d.com", "vungle.com", "ad.doubleclick.net",
@@ -34,7 +41,7 @@ class ThreatEngine(private val context: Context) {
             try {
                 val inputStream = context.assets.open("trackers.txt")
                 val reader = BufferedReader(InputStreamReader(inputStream))
-                
+
                 reader.forEachLine { domain ->
                     if (domain.isNotBlank() && !domain.startsWith("#")) {
                         insert(domain.trim().lowercase().reversed())
@@ -44,7 +51,7 @@ class ThreatEngine(private val context: Context) {
             } catch (fileError: Exception) {
                 Log.e("ThreatEngine", "Could not find trackers.txt! Falling back to failsafe list.")
             }
-            
+
             isReady = true
             Log.d("ThreatEngine", "Successfully loaded $count malicious domains into the Engine!")
         } catch (e: Exception) {
@@ -67,27 +74,59 @@ class ThreatEngine(private val context: Context) {
     /**
      * Checks if the intercepted domain is in our blocklist.
      */
-    fun isSuspicious(domain: String?): Boolean {
+    private fun isSuspicious(domain: String?): Boolean {
         if (domain.isNullOrBlank() || !isReady) return false
-        
+
         // FIX: Force lowercase because DNS domains are often mixed-case
         val cleanDomain = domain.trim().lowercase()
         var current = root
 
         for (char in cleanDomain.reversed()) {
             // If we hit the end of a blocked word, AND the next char is a dot, it's a subdomain!
-            // Example: Blocked "facebook.com", checking "graph.facebook.com"
             if (current.isTerminal && char == '.') {
-                return true 
+                return true
             }
-            
+
             if (!current.children.containsKey(char)) {
                 return false // Path broke before finishing
             }
             current = current.children[char]!!
         }
-        
-        // Exact match (e.g., checking "google-analytics.com" against "google-analytics.com")
+
+        // Exact match
         return current.isTerminal
+    }
+
+    // 🟢 NEW: The Main Processing Function that ties it all together!
+    fun evaluatePacket(event: NetworkEvent): NetworkEvent {
+        val domainToCheck = event.domain
+
+        // 1. Check if the domain triggers our Trie
+        if (isSuspicious(domainToCheck)) {
+
+            // 2. Flag it as a threat (Turns the UI row Red!)
+            val flaggedEvent = event.copy(isSuspicious = true)
+
+            // 3. Check the Spam Filter before notifying
+            if (domainToCheck != null) {
+                val currentTime = System.currentTimeMillis()
+                val lastAlertTime = notificationCooldown[domainToCheck] ?: 0L
+
+                if (currentTime - lastAlertTime > COOLDOWN_TIME_MS) {
+                    // Update cooldown map and fire notification
+                    notificationCooldown[domainToCheck] = currentTime
+
+                    notificationHelper.showThreatAlert(
+                        appName = event.appName ?: "Background Process",
+                        domain = domainToCheck
+                    )
+                }
+            }
+
+            return flaggedEvent
+        }
+
+        // If it's safe, return it unmodified
+        return event
     }
 }

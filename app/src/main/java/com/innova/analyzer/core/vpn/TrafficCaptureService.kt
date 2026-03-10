@@ -14,6 +14,7 @@ import androidx.core.app.NotificationCompat
 import com.innova.analyzer.MainActivity // Make sure this matches your package name
 import com.innova.analyzer.core.network.PacketParser
 import com.innova.analyzer.core.network.TrafficStream
+import com.innova.analyzer.core.threats.ThreatEngine // 🟢 IMPORT THE ENGINE
 import com.innova.analyzer.data.attribution.AppAttributionHelper
 import com.innova.analyzer.data.local.TrafficDatabase
 import kotlinx.coroutines.*
@@ -126,6 +127,10 @@ class TrafficCaptureService : VpnService() {
         val dao = TrafficDatabase.getDatabase(this).trafficDao()
         val attributionHelper = AppAttributionHelper(this)
 
+        // 🟢 1. INITIALIZE AND LOAD THE THREAT ENGINE
+        val threatEngine = ThreatEngine(this)
+        threatEngine.loadBlocklist()
+
         serviceScope.launch {
             vpnInputStream = FileInputStream(fd)
             val packet = ByteArray(VpnConfig.MTU_SIZE)
@@ -136,12 +141,12 @@ class TrafficCaptureService : VpnService() {
                     val length = stream.read(packet)
 
                     if (length > 0) {
-                        // 1. Lightning fast byte extraction
+                        // Lightning fast byte extraction
                         val parsedEvent = PacketParser.parseIPv4Packet(packet, length)
 
                         if (parsedEvent != null) {
 
-                            // 🟢 2. THE CACHE LOOKUP ($O(1)$ Time Complexity)
+                            // THE CACHE LOOKUP ($O(1)$ Time Complexity)
                             val connectionKey = "${parsedEvent.protocol.ordinal}:${parsedEvent.sourceIp}:${parsedEvent.sourcePort}:${parsedEvent.destIp}:${parsedEvent.destPort}"
 
                             val realUid = uidCache.getOrPut(connectionKey) {
@@ -164,12 +169,17 @@ class TrafficCaptureService : VpnService() {
                                 packageName = realPackageName
                             )
 
-                            // 3. Emit to the UI instantly (Flow handles its own async)
-                            TrafficStream.emitEvent(finalizedEvent)
+                            // 🟢 2. PASS IT THROUGH THE THREAT ENGINE
+                            // This checks the Trie, flags `isSuspicious = true` if it's a tracker,
+                            // and safely fires the Android notification using our Cooldown Map.
+                            val evaluatedEvent = threatEngine.evaluatePacket(finalizedEvent)
 
-                            // 🟢 4. ASYNC DATABASE WRITE (Prevents VPN from lagging)
+                            // 3. Emit the EVALUATED event to the UI (Flow handles its own async)
+                            TrafficStream.emitEvent(evaluatedEvent)
+
+                            // 4. ASYNC DATABASE WRITE (Prevents VPN from lagging)
                             launch {
-                                dao.insertEvent(finalizedEvent)
+                                dao.insertEvent(evaluatedEvent)
                             }
                         }
                     }
