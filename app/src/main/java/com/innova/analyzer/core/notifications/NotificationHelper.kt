@@ -43,9 +43,9 @@ class NotificationHelper(private val context: Context) {
 
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_dialog_alert)
-            .setContentTitle("🚨 Privacy Alert: $appName")
-            .setContentText("Connected to known tracker: $domain")
-            .setStyle(NotificationCompat.BigTextStyle().bigText("We intercepted $appName attempting to send data to $domain."))
+            .setContentTitle("🛡️ Blocked Threat: $appName")
+            .setContentText("Blocked connection to known tracker: $domain")
+            .setStyle(NotificationCompat.BigTextStyle().bigText("Innova VPN actively blocked $appName from sending data to a known tracker: $domain."))
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setAutoCancel(true)
             .setContentIntent(pendingIntent)

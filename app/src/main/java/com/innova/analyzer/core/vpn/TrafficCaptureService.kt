@@ -191,6 +191,7 @@ class TrafficCaptureService : VpnService() {
                     Log.v("InnovaVPN", "tun read $length bytes proto=${rawBuf[9].toInt() and 0xFF}")
 
                     // ----- Monitoring path (PacketParser → ThreatEngine → DB) -----
+                    var shouldDropPacket = false
                     try {
                         val parsedEvent = PacketParser.parseIPv4Packet(rawBuf, length)
                         if (parsedEvent != null) {
@@ -209,6 +210,10 @@ class TrafficCaptureService : VpnService() {
                                 packageName = attributionHelper.getPackageName(realUid)
                             )
                             val evaluatedEvent = threatEngine.evaluatePacket(finalizedEvent)
+                            
+                            // 🔥 Active Blocking Logic 🔥
+                            shouldDropPacket = evaluatedEvent.isSuspicious
+                            
                             TrafficStream.emitEvent(evaluatedEvent)
                             launch { 
                                 dao.upsertEvent(
@@ -233,19 +238,23 @@ class TrafficCaptureService : VpnService() {
                     }
 
                     // ----- Forwarding path (NIO queues) -----
-                    val packetBuffer = ByteBufferPool.acquire()
-                    packetBuffer.put(rawBuf, 0, length)
-                    packetBuffer.flip()
-                    try {
-                        val packet = Packet(packetBuffer)
-                        when {
-                            packet.isUDP() -> deviceToNetworkUDPQueue.offer(packet)
-                            packet.isTCP() -> deviceToNetworkTCPQueue.offer(packet)
-                            else -> ByteBufferPool.release(packetBuffer)
+                    if (!shouldDropPacket) {
+                        val packetBuffer = ByteBufferPool.acquire()
+                        packetBuffer.put(rawBuf, 0, length)
+                        packetBuffer.flip()
+                        try {
+                            val packet = Packet(packetBuffer)
+                            when {
+                                packet.isUDP() -> deviceToNetworkUDPQueue.offer(packet)
+                                packet.isTCP() -> deviceToNetworkTCPQueue.offer(packet)
+                                else -> ByteBufferPool.release(packetBuffer)
+                            }
+                        } catch (e: Exception) {
+                            Log.e("InnovaVPN", "Packet parse error: ${e.message}", e)
+                            ByteBufferPool.release(packetBuffer)
                         }
-                    } catch (e: Exception) {
-                        Log.e("InnovaVPN", "Packet parse error: ${e.message}", e)
-                        ByteBufferPool.release(packetBuffer)
+                    } else {
+                        Log.w("InnovaVPN", "🛡️ Actively dropped malicious packet from reaching the internet.")
                     }
                 }
             } catch (e: Exception) {

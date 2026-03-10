@@ -11,6 +11,8 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.core.content.ContextCompat
+import android.Manifest
 import androidx.compose.material3.Scaffold
 import androidx.compose.ui.Modifier
 import androidx.compose.runtime.getValue
@@ -41,6 +43,17 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    // 1b. Notification Permission Launcher
+    private val notificationPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            Log.d("MainActivity", "Notification permission granted.")
+        } else {
+            Log.e("MainActivity", "Notification permission denied. Threats won't alert user.")
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -48,6 +61,14 @@ class MainActivity : ComponentActivity() {
         // 2. Initialize the Database
         val db = TrafficDatabase.getDatabase(this)
         val dao = db.trafficDao()
+
+        // Request Push Notification Permissions (Android 13+)
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) 
+                != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
+        }
 
         // 3. The Modern Compose Navigation UI
         setContent {
