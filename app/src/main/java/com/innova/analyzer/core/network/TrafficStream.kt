@@ -6,13 +6,13 @@ import kotlinx.coroutines.flow.asSharedFlow
 
 object TrafficStream {
     // extraBufferCapacity ensures we don't drop packets if the UI lags for a millisecond
-    private val _liveTraffic = MutableSharedFlow<NetworkEvent>(extraBufferCapacity = 100)
+    private val _trafficFlow = MutableSharedFlow<NetworkEvent>(extraBufferCapacity = 100)
 
     // The public, read-only version for the UI to observe
-    val liveTraffic = _liveTraffic.asSharedFlow()
+    val trafficFlow = _trafficFlow.asSharedFlow()
 
     // The VPN Service calls this every time it parses a packet
     suspend fun emitEvent(event: NetworkEvent) {
-        _liveTraffic.emit(event)
+        _trafficFlow.emit(event)
     }
 }
