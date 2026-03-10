@@ -1,7 +1,6 @@
 package com.innova.analyzer.ui.report
 
 import android.content.Context
-import android.content.Intent
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.Crossfade
 import androidx.compose.foundation.Canvas
@@ -11,8 +10,10 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -48,7 +49,7 @@ sealed class ReportScreenState {
     object ThreatDetails : ReportScreenState()
 }
 
-// 🟢 NEW: Data class to hold the exact score breakdown
+// 🟢 Data class to hold the exact score breakdown
 data class ScoreBreakdown(
     val finalScore: Int,
     val grade: String,
@@ -68,10 +69,10 @@ data class AppSummary(
     val httpCount: Int,
     val otherCount: Int,
     val logs: List<NetworkEvent>,
-    val scoreBreakdown: ScoreBreakdown // 🟢 Attached the Score to the App!
+    val scoreBreakdown: ScoreBreakdown
 )
 
-// 🟢 NEW: The Core Scoring Algorithm
+// 🟢 The Core Scoring Algorithm
 fun calculatePrivacyScore(packets: List<NetworkEvent>): ScoreBreakdown {
     var score = 100f
     val reasons = mutableListOf<String>()
@@ -125,6 +126,10 @@ fun calculatePrivacyScore(packets: List<NetworkEvent>): ScoreBreakdown {
 fun ReportScreen(viewModel: DashboardViewModel) {
     val rawLogs by viewModel.trafficLogs.collectAsStateWithLifecycle()
     var currentScreen by remember { mutableStateOf<ReportScreenState>(ReportScreenState.MainList) }
+
+    // 🟢 State to show/hide the scoring info dialog
+    var showInfoDialog by remember { mutableStateOf(false) }
+
     val context = LocalContext.current
 
     val appSummaries = remember(rawLogs) {
@@ -142,7 +147,7 @@ fun ReportScreen(viewModel: DashboardViewModel) {
                     httpCount = packets.count { it.protocol == ConnectionProtocol.HTTP || packets.any { it.destPort == 80 } },
                     otherCount = packets.count { it.protocol != ConnectionProtocol.TCP && it.protocol != ConnectionProtocol.UDP && it.protocol != ConnectionProtocol.DNS && it.protocol != ConnectionProtocol.HTTPS && it.protocol != ConnectionProtocol.HTTP },
                     logs = packets,
-                    scoreBreakdown = calculatePrivacyScore(packets) // 🟢 Generate the Score!
+                    scoreBreakdown = calculatePrivacyScore(packets)
                 )
             }.sortedByDescending { it.threats * 1000 + it.totalPackets }
     }
@@ -164,6 +169,11 @@ fun ReportScreen(viewModel: DashboardViewModel) {
         currentScreen = ReportScreenState.MainList
     }
 
+    // Display the Dialog if state is true
+    if (showInfoDialog) {
+        ScoringInfoDialog(onDismiss = { showInfoDialog = false })
+    }
+
     Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         Crossfade(targetState = currentScreen, label = "ReportTransition") { state ->
             when (state) {
@@ -173,8 +183,10 @@ fun ReportScreen(viewModel: DashboardViewModel) {
                         totalBlocked = totalBlocked, topApp = topApp,
                         onAppClick = { currentScreen = ReportScreenState.AppDetails(it.appName) },
                         onThreatClick = { currentScreen = ReportScreenState.ThreatDetails },
-                        onShare = { sharePrivacyReport(context, totalBlocked, topApp) },
-                        onClearData = { viewModel.clearSessionData() }
+                        onInfoClick = { showInfoDialog = true },
+                        onClearData = { viewModel.clearSessionData() },
+                        context = context,
+                        rawLogs = rawLogs
                     )
                 }
                 is ReportScreenState.AppDetails -> {
@@ -189,16 +201,90 @@ fun ReportScreen(viewModel: DashboardViewModel) {
     }
 }
 
+// 🟢 The Explainable AI Scoring Dialog
+@Composable
+fun ScoringInfoDialog(onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.Info, contentDescription = "Info", tint = MaterialTheme.colorScheme.primary)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("How Scoring Works", fontWeight = FontWeight.Bold)
+            }
+        },
+        text = {
+            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                Text(
+                    "Every application starts with a perfect Privacy Trust Score of 100. Points are mathematically deducted based on network behavior:",
+                    fontSize = 14.sp,
+                    modifier = Modifier.padding(bottom = 12.dp)
+                )
+
+                Text("🚨 Threats & Trackers (Up to -60 pts)", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                Text("Heavy deductions for connecting to known tracking, ad, or malicious domains.", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 8.dp))
+
+                Text("🔓 Unencrypted HTTP (Up to -30 pts)", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                Text("Penalizes apps that transmit your data over the web without standard HTTPS encryption (Port 80).", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 8.dp))
+
+                Text("🌐 Domain Dispersion (Up to -15 pts)", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                Text("Deducts points if an app connects to more than 3 unique remote servers, which typically indicates embedded third-party SDKs harvesting your data.", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 16.dp))
+
+                HorizontalDivider(color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.2f))
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Text("Grading Scale:", fontWeight = FontWeight.Bold, fontSize = 14.sp, modifier = Modifier.padding(bottom = 4.dp))
+                Text("🟢 90-100 (A) : Excellent\n🔵 75-89 (B) : Good\n🟡 60-74 (C) : Warning\n🟠 40-59 (D) : Risky\n🔴 0-39 (F) : Critical", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Got it", fontWeight = FontWeight.Bold)
+            }
+        },
+        containerColor = MaterialTheme.colorScheme.surfaceVariant,
+        titleContentColor = MaterialTheme.colorScheme.onSurface,
+        textContentColor = MaterialTheme.colorScheme.onSurface
+    )
+}
+
 @Composable
 fun AppListReport(
-    summaries: List<AppSummary>, protocolCounts: List<Int>, totalBlocked: Int, topApp: String,
-    onAppClick: (AppSummary) -> Unit, onThreatClick: () -> Unit, onShare: () -> Unit, onClearData: () -> Unit
+    summaries: List<AppSummary>,
+    protocolCounts: List<Int>,
+    totalBlocked: Int,
+    topApp: String,
+    onAppClick: (AppSummary) -> Unit,
+    onThreatClick: () -> Unit,
+    onInfoClick: () -> Unit,
+    onClearData: () -> Unit,
+    context: Context,
+    rawLogs: List<NetworkEvent>
 ) {
     LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Text("Security Report", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-                IconButton(onClick = onShare) { Icon(Icons.Default.Share, contentDescription = "Share", tint = MaterialTheme.colorScheme.primary) }
+
+                Row {
+                    // PDF Exporter Button
+                    IconButton(onClick = {
+                        try {
+                            com.innova.analyzer.core.export.PdfExporter.generateAndDownloadPdf(
+                                context = context, summaries = summaries, allLogs = rawLogs, totalBlocked = totalBlocked, topApp = topApp
+                            )
+                        } catch (e: Exception) {
+                            // Failsafe if PdfExporter isn't fully set up yet
+                        }
+                    }) {
+                        Icon(Icons.Default.PictureAsPdf, contentDescription = "Download PDF", tint = MaterialTheme.colorScheme.error)
+                    }
+
+                    // Info Button
+                    IconButton(onClick = onInfoClick) {
+                        Icon(Icons.Default.Info, contentDescription = "Scoring Info", tint = MaterialTheme.colorScheme.primary)
+                    }
+                }
             }
         }
 
@@ -228,7 +314,6 @@ fun AppListReport(
     }
 }
 
-// 🟢 UPDATED: App Card now displays the Letter Grade
 @Composable
 fun AppSummaryCard(summary: AppSummary, onClick: () -> Unit) {
     val isDangerous = summary.threats > 0
@@ -268,7 +353,7 @@ fun AppSummaryCard(summary: AppSummary, onClick: () -> Unit) {
 
             Spacer(modifier = Modifier.width(12.dp))
 
-            // 🟢 The Grade Badge!
+            // The Grade Badge!
             Box(
                 modifier = Modifier
                     .size(40.dp)
@@ -288,7 +373,6 @@ fun AppSummaryCard(summary: AppSummary, onClick: () -> Unit) {
     }
 }
 
-// 🟢 UPDATED: Detail Report now breaks down exactly WHY they got that score
 @Composable
 fun AppDetailReport(summary: AppSummary, onBackClick: () -> Unit) {
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
@@ -300,7 +384,7 @@ fun AppDetailReport(summary: AppSummary, onBackClick: () -> Unit) {
             Text(text = summary.appName, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
         }
 
-        // 🟢 Score Header
+        // Score Header
         Card(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(containerColor = summary.scoreBreakdown.color.copy(alpha = 0.1f)),
@@ -331,7 +415,11 @@ fun AppDetailReport(summary: AppSummary, onBackClick: () -> Unit) {
         Spacer(modifier = Modifier.height(24.dp))
         Text("Recent Activity", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
 
-        LazyColumn(modifier = Modifier.weight(1f)) {
+        LazyColumn(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            contentPadding = PaddingValues(vertical = 12.dp)
+        ) {
             items(summary.logs.reversed()) { log -> NetworkRow(log) }
         }
     }
@@ -348,7 +436,10 @@ fun ThreatDetailReport(logs: List<NetworkEvent>, onBackClick: () -> Unit) {
         if (threats.isEmpty()) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("No threats detected!") }
         } else {
-            LazyColumn { items(threats.reversed()) { log -> NetworkRow(log) } }
+            LazyColumn(
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                contentPadding = PaddingValues(top = 12.dp, bottom = 80.dp)
+            ) { items(threats.reversed()) { log -> NetworkRow(log) } }
         }
     }
 }
@@ -360,11 +451,11 @@ fun ClickableThreatRow(count: Int, onClick: () -> Unit) {
         colors = CardDefaults.cardColors(containerColor = if (count > 0) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.primaryContainer)
     ) {
         Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(if (count > 0) Icons.Default.SecurityUpdateWarning else Icons.Default.Shield, contentDescription = null)
+            Icon(if (count > 0) Icons.Default.SecurityUpdateWarning else Icons.Default.Shield, contentDescription = null, tint = if(count > 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
             Spacer(Modifier.width(12.dp))
             Column {
-                Text(if (count > 0) "$count Threats Blocked" else "Device is Secure", fontWeight = FontWeight.Bold)
-                Text("Tap to view filtered security logs", fontSize = 12.sp)
+                Text(if (count > 0) "$count Threats Blocked" else "Device is Secure", fontWeight = FontWeight.Bold, color = if(count > 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
+                Text("Tap to view filtered security logs", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }
@@ -375,7 +466,7 @@ fun ProtocolPieChartCard(counts: List<Int>) {
     val labels = listOf("TCP", "UDP", "DNS", "HTTPS", "HTTP")
     val total = counts.sum().coerceAtLeast(1)
 
-    Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp)) {
+    Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text("Traffic Distribution", fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(16.dp))
@@ -410,31 +501,76 @@ fun ProtocolPieChartCard(counts: List<Int>) {
 }
 
 @Composable
-fun TopAppsChartCard(summaries: List<AppSummary>) {
-    val model = entryModelOf(*summaries.map { it.totalPackets.toFloat() }.toTypedArray())
-    Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp)) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Text("Top Bandwidth Users", fontWeight = FontWeight.Bold)
-            Spacer(Modifier.height(8.dp))
-            Chart(
-                chart = columnChart(),
-                model = model,
-                startAxis = rememberStartAxis(),
-                bottomAxis = rememberBottomAxis(),
-                modifier = Modifier.height(150.dp)
-            )
+fun TrafficTrendGraph(logs: List<NetworkEvent>, modifier: Modifier = Modifier) {
+    if (logs.isEmpty()) return
+    val trendPoints = remember(logs) {
+        val orderedLogs = logs.reversed()
+        val chunkSize = maxOf(1, orderedLogs.size / 20)
+        val safeCounts = mutableListOf<Float>(0f)
+        val threatCounts = mutableListOf<Float>(0f)
+        orderedLogs.chunked(chunkSize).forEach { chunk ->
+            safeCounts.add(chunk.count { !it.isSuspicious }.toFloat())
+            threatCounts.add(chunk.count { it.isSuspicious }.toFloat())
         }
+        Pair(safeCounts, threatCounts)
+    }
+    val safeData = trendPoints.first; val threatData = trendPoints.second
+    val overallMax = maxOf(safeData.maxOrNull() ?: 1f, threatData.maxOrNull() ?: 1f, 1f)
+    val safeColor = MaterialTheme.colorScheme.primary; val threatColor = MaterialTheme.colorScheme.error
+    val axisColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+
+    Canvas(modifier = modifier) {
+        val width = size.width; val height = size.height
+        val paddingBottom = 20f; val paddingLeft = 20f; val paddingTop = 10f
+        val graphWidth = width - paddingLeft; val graphHeight = height - paddingBottom - paddingTop
+
+        drawLine(color = axisColor, start = Offset(paddingLeft, paddingTop), end = Offset(paddingLeft, height - paddingBottom), strokeWidth = 3f)
+        drawLine(color = axisColor, start = Offset(paddingLeft, height - paddingBottom), end = Offset(width, height - paddingBottom), strokeWidth = 3f)
+
+        val safePath = Path(); val threatPath = Path()
+        val stepX = graphWidth / maxOf(1, safeData.size - 1).toFloat()
+
+        safeData.forEachIndexed { index, value ->
+            val x = paddingLeft + (index * stepX); val y = (height - paddingBottom) - ((value / overallMax) * graphHeight)
+            if (index == 0) safePath.moveTo(x, y) else safePath.lineTo(x, y)
+        }
+        threatData.forEachIndexed { index, value ->
+            val x = paddingLeft + (index * stepX); val y = (height - paddingBottom) - ((value / overallMax) * graphHeight)
+            if (index == 0) threatPath.moveTo(x, y) else threatPath.lineTo(x, y)
+        }
+        drawPath(path = safePath, color = safeColor, style = Stroke(width = 4f, cap = StrokeCap.Round))
+        drawPath(path = threatPath, color = threatColor, style = Stroke(width = 4f, cap = StrokeCap.Round))
     }
 }
 
-fun sharePrivacyReport(context: Context, blocked: Int, topApp: String) {
-    val text = "🛡️ My Device Privacy Report\n\n" +
-            "✅ Threats Blocked: $blocked\n" +
-            "📱 Most Active App: $topApp\n\n" +
-            "Analyzing my network traffic with Innova Analyzer."
-    val intent = Intent(Intent.ACTION_SEND).apply {
-        type = "text/plain"
-        putExtra(Intent.EXTRA_TEXT, text)
+@Composable
+fun StatBox(title: String, value: String, color: Color, modifier: Modifier = Modifier) {
+    Card(shape = RoundedCornerShape(12.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)), modifier = modifier) { Column(modifier = Modifier.padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally) { Text(text = value, color = color, fontSize = 24.sp, fontWeight = FontWeight.Bold); Text(text = title, style = MaterialTheme.typography.labelSmall) } }
+}
+
+// 🟢 FIX INCLUDED HERE: Formats the X-axis as app names instead of index numbers!
+@Composable
+fun TopAppsChartCard(summaries: List<AppSummary>) {
+    val model = entryModelOf(*summaries.map { it.totalPackets.toFloat() }.toTypedArray())
+    Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text("Top Bandwidth Users", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+            Spacer(Modifier.height(16.dp))
+            Chart(
+                chart = columnChart(),
+                model = model,
+                // Clean up the Y-axis to show integers
+                startAxis = rememberStartAxis(
+                    valueFormatter = { value, _ -> value.toInt().toString() }
+                ),
+                // Map the X-axis points to the actual app names
+                bottomAxis = rememberBottomAxis(
+                    valueFormatter = { value, _ ->
+                        summaries.getOrNull(value.toInt())?.appName?.take(6) ?: ""
+                    }
+                ),
+                modifier = Modifier.fillMaxWidth().height(150.dp)
+            )
+        }
     }
-    context.startActivity(Intent.createChooser(intent, "Share Report"))
 }

@@ -247,7 +247,8 @@ fun AlertsScreen(viewModel: DashboardViewModel) {
 
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(bottom = 80.dp) // Keep clear of the bottom nav bar!
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            contentPadding = PaddingValues(top = 8.dp, bottom = 80.dp) // Keep clear of the bottom nav bar!
         ) {
             if (blockedLogs.isEmpty()) {
                 item {
@@ -275,7 +276,7 @@ fun BlockedTrafficCard(event: NetworkEvent) {
     Card(
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)),
-        modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+        modifier = Modifier.fillMaxWidth(),
         border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.3f))
     ) {
         Row(
