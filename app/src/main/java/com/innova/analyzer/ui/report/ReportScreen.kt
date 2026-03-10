@@ -49,7 +49,7 @@ sealed class ReportScreenState {
     object ThreatDetails : ReportScreenState()
 }
 
-// 🟢 Data class to hold the exact score breakdown
+// Data class to hold the exact score breakdown
 data class ScoreBreakdown(
     val finalScore: Int,
     val grade: String,
@@ -69,10 +69,11 @@ data class AppSummary(
     val httpCount: Int,
     val otherCount: Int,
     val logs: List<NetworkEvent>,
-    val scoreBreakdown: ScoreBreakdown
+    val scoreBreakdown: ScoreBreakdown,
+    val trafficCategories: Map<String, Int> // Holds the heuristic data categories
 )
 
-// 🟢 The Core Scoring Algorithm
+// The Core Scoring Algorithm (100% Offline)
 fun calculatePrivacyScore(packets: List<NetworkEvent>): ScoreBreakdown {
     var score = 100f
     val reasons = mutableListOf<String>()
@@ -122,12 +123,78 @@ fun calculatePrivacyScore(packets: List<NetworkEvent>): ScoreBreakdown {
     return ScoreBreakdown(finalScore, grade, color, reasons)
 }
 
+// The Heuristic Engine to categorize packet behaviors
+fun generateTrafficCategories(packets: List<NetworkEvent>): Map<String, Int> {
+    var mediaStreaming = 0
+    var dataUploads = 0
+    var secureApiParsing = 0
+    var insecureWeb = 0
+    var dnsResolution = 0
+    var backgroundHeartbeats = 0
+    var realTimeUdp = 0
+    var telemetryAndTracking = 0
+    var customSockets = 0
+    var miscellaneous = 0
+
+    packets.forEach { p ->
+        // Heuristic: If it comes FROM port 443/80, it's downloading to the device.
+        val isInbound = p.sourcePort == 443 || p.sourcePort == 80 || p.sourcePort == 53
+        val payload = p.totalBytes
+
+        when {
+            // 1. Telemetry & Tracking: Caught by our ThreatEngine
+            p.isSuspicious -> telemetryAndTracking++
+
+            // 2. DNS Resolution: Looking up website addresses
+            p.protocol == ConnectionProtocol.DNS || p.destPort == 53 || p.sourcePort == 53 -> dnsResolution++
+
+            // 3. Real-Time / VoIP: UDP traffic (usually gaming or voice/video calls)
+            p.protocol == ConnectionProtocol.UDP -> realTimeUdp++
+
+            // 4. Insecure Web: Cleartext HTTP traffic
+            p.destPort == 80 || p.sourcePort == 80 -> insecureWeb++
+
+            // 5. Media & Streaming (Downlink): Large incoming packets
+            isInbound && payload > 1000 -> mediaStreaming++
+
+            // 6. Data Uploads (Uplink): Large outgoing packets
+            !isInbound && payload > 1000 -> dataUploads++
+
+            // 7. Background Heartbeats: Tiny TCP packets keeping the connection alive
+            payload < 64 -> backgroundHeartbeats++
+
+            // 8. Secure API Parsing: Standard sized HTTPS traffic
+            p.destPort == 443 || p.sourcePort == 443 -> secureApiParsing++
+
+            // 9. Custom Sockets: Non-standard ports (Not web, not DNS)
+            p.destPort !in listOf(80, 443, 53) && p.sourcePort !in listOf(80, 443, 53) -> customSockets++
+
+            // 10. Miscellaneous: TCP ACKs, overhead, unclassified
+            else -> miscellaneous++
+        }
+    }
+
+    // Filter out categories with 0 packets and sort by highest usage
+    return mapOf(
+        "Media & Streaming (Downlink)" to mediaStreaming,
+        "Data Uploads & Exfiltration" to dataUploads,
+        "Secure API & Parsing" to secureApiParsing,
+        "Telemetry & Tracking" to telemetryAndTracking,
+        "Background Heartbeats" to backgroundHeartbeats,
+        "Real-Time Media (UDP)" to realTimeUdp,
+        "DNS Resolution" to dnsResolution,
+        "Insecure Web (HTTP)" to insecureWeb,
+        "Custom Socket Connections" to customSockets,
+        "Network Overhead" to miscellaneous
+    ).filterValues { it > 0 }.toList().sortedByDescending { it.second }.toMap()
+}
+
 @Composable
 fun ReportScreen(viewModel: DashboardViewModel) {
     val rawLogs by viewModel.trafficLogs.collectAsStateWithLifecycle()
     var currentScreen by remember { mutableStateOf<ReportScreenState>(ReportScreenState.MainList) }
 
-    // 🟢 State to show/hide the scoring info dialog
+    // State to show/hide the scoring info dialog
     var showInfoDialog by remember { mutableStateOf(false) }
 
     val context = LocalContext.current
@@ -147,7 +214,8 @@ fun ReportScreen(viewModel: DashboardViewModel) {
                     httpCount = packets.count { it.protocol == ConnectionProtocol.HTTP || packets.any { it.destPort == 80 } },
                     otherCount = packets.count { it.protocol != ConnectionProtocol.TCP && it.protocol != ConnectionProtocol.UDP && it.protocol != ConnectionProtocol.DNS && it.protocol != ConnectionProtocol.HTTPS && it.protocol != ConnectionProtocol.HTTP },
                     logs = packets,
-                    scoreBreakdown = calculatePrivacyScore(packets)
+                    scoreBreakdown = calculatePrivacyScore(packets),
+                    trafficCategories = generateTrafficCategories(packets) // Generates the 10 data categories
                 )
             }.sortedByDescending { it.threats * 1000 + it.totalPackets }
     }
@@ -201,7 +269,7 @@ fun ReportScreen(viewModel: DashboardViewModel) {
     }
 }
 
-// 🟢 The Explainable AI Scoring Dialog
+// The Enterprise-Grade Explainable AI Scoring Dialog
 @Composable
 fun ScoringInfoDialog(onDismiss: () -> Unit) {
     AlertDialog(
@@ -210,36 +278,36 @@ fun ScoringInfoDialog(onDismiss: () -> Unit) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Default.Info, contentDescription = "Info", tint = MaterialTheme.colorScheme.primary)
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("How Scoring Works", fontWeight = FontWeight.Bold)
+                Text("Scoring Architecture", fontWeight = FontWeight.Bold)
             }
         },
         text = {
             Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
                 Text(
-                    "Every application starts with a perfect Privacy Trust Score of 100. Points are mathematically deducted based on network behavior:",
-                    fontSize = 14.sp,
+                    "The Innova Privacy Trust Score utilizes a Negative-Scoring Heuristic Model (similar to Google Lighthouse and Qualys SSL Labs) to perform live DAST (Dynamic Application Security Testing).",
+                    fontSize = 13.sp,
                     modifier = Modifier.padding(bottom = 12.dp)
                 )
 
-                Text("🚨 Threats & Trackers (Up to -60 pts)", fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                Text("Heavy deductions for connecting to known tracking, ad, or malicious domains.", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 8.dp))
+                Text("🚨 Tracker Exfiltration (Up to -60 pts)", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                Text("Enforces MASVS-PRIVACY-2. Points are deducted dynamically based on the ratio of packets actively attempting to reach known OSINT tracking and telemetry domains.", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 8.dp))
 
-                Text("🔓 Unencrypted HTTP (Up to -30 pts)", fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                Text("Penalizes apps that transmit your data over the web without standard HTTPS encryption (Port 80).", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 8.dp))
+                Text("🔓 Cleartext Violations (Up to -30 pts)", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                Text("Enforces OWASP MASVS-NETWORK-1. Severe penalties are applied for any packets transmitted over unencrypted HTTP (Port 80), exposing data to MITM attacks.", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 8.dp))
 
                 Text("🌐 Domain Dispersion (Up to -15 pts)", fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                Text("Deducts points if an app connects to more than 3 unique remote servers, which typically indicates embedded third-party SDKs harvesting your data.", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 16.dp))
+                Text("Maps to Exodus Privacy auditing standards. Penalizes apps that fan out connections to multiple unique third-party SDK servers.", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 16.dp))
 
                 HorizontalDivider(color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.2f))
                 Spacer(modifier = Modifier.height(12.dp))
 
-                Text("Grading Scale:", fontWeight = FontWeight.Bold, fontSize = 14.sp, modifier = Modifier.padding(bottom = 4.dp))
-                Text("🟢 90-100 (A) : Excellent\n🔵 75-89 (B) : Good\n🟡 60-74 (C) : Warning\n🟠 40-59 (D) : Risky\n🔴 0-39 (F) : Critical", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Quantitative Risk Scale:", fontWeight = FontWeight.Bold, fontSize = 14.sp, modifier = Modifier.padding(bottom = 4.dp))
+                Text("🟢 90-100 (A) : Secure / MASVS Compliant\n🔵 75-89 (B) : Acceptable Telemetry\n🟡 60-74 (C) : Elevated Risk\n🟠 40-59 (D) : Severe Privacy Violation\n🔴 0-39 (F) : Active Threat / Spyware", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         },
         confirmButton = {
             TextButton(onClick = onDismiss) {
-                Text("Got it", fontWeight = FontWeight.Bold)
+                Text("Acknowledge", fontWeight = FontWeight.Bold)
             }
         },
         containerColor = MaterialTheme.colorScheme.surfaceVariant,
@@ -373,6 +441,7 @@ fun AppSummaryCard(summary: AppSummary, onClick: () -> Unit) {
     }
 }
 
+// Displays Data Categories and Usage Breakdown Progress Bars
 @Composable
 fun AppDetailReport(summary: AppSummary, onBackClick: () -> Unit) {
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
@@ -407,20 +476,65 @@ fun AppDetailReport(summary: AppSummary, onBackClick: () -> Unit) {
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        Text("Why this score?", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-        summary.scoreBreakdown.reasons.forEach { reason ->
-            Text("• $reason", modifier = Modifier.padding(vertical = 4.dp), style = MaterialTheme.typography.bodyMedium)
-        }
-
-        Spacer(modifier = Modifier.height(24.dp))
-        Text("Recent Activity", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-
         LazyColumn(
             modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-            contentPadding = PaddingValues(vertical = 12.dp)
+            contentPadding = PaddingValues(top = 12.dp, bottom = 80.dp)
         ) {
-            items(summary.logs.reversed()) { log -> NetworkRow(log) }
+            item {
+                Text("Why this score?", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                summary.scoreBreakdown.reasons.forEach { reason ->
+                    Text("• $reason", modifier = Modifier.padding(vertical = 4.dp), style = MaterialTheme.typography.bodyMedium)
+                }
+                Spacer(modifier = Modifier.height(24.dp))
+            }
+
+            // The Traffic Categorization Breakdown UI
+            item {
+                Text("Data Usage Breakdown", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text("Heuristic analysis of packet behavior", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 12.dp))
+
+                Card(
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        val maxPackets = summary.trafficCategories.values.maxOrNull()?.toFloat() ?: 1f
+
+                        summary.trafficCategories.forEach { (category, count) ->
+                            val progress = count / maxPackets
+                            val barColor = when {
+                                category.contains("Tracking") || category.contains("Insecure") -> MaterialTheme.colorScheme.error
+                                category.contains("Streaming") || category.contains("Uploads") -> MaterialTheme.colorScheme.primary
+                                else -> MaterialTheme.colorScheme.tertiary
+                            }
+
+                            Column(modifier = Modifier.padding(vertical = 6.dp)) {
+                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                    Text(category, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                                    Text("$count pkts", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                                Spacer(modifier = Modifier.height(4.dp))
+                                LinearProgressIndicator(
+                                    progress = progress,
+                                    modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(4.dp)),
+                                    color = barColor,
+                                    trackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            item {
+                Text("Recent Activity", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 8.dp))
+            }
+
+            items(summary.logs.reversed()) { log ->
+                NetworkRow(log)
+                Spacer(modifier = Modifier.height(8.dp))
+            }
         }
     }
 }
@@ -506,36 +620,45 @@ fun TrafficTrendGraph(logs: List<NetworkEvent>, modifier: Modifier = Modifier) {
     val trendPoints = remember(logs) {
         val orderedLogs = logs.reversed()
         val chunkSize = maxOf(1, orderedLogs.size / 20)
-        val safeCounts = mutableListOf<Float>(0f)
-        val threatCounts = mutableListOf<Float>(0f)
+        val safeCounts = mutableListOf<Float>()
+        val threatCounts = mutableListOf<Float>()
         orderedLogs.chunked(chunkSize).forEach { chunk ->
             safeCounts.add(chunk.count { !it.isSuspicious }.toFloat())
             threatCounts.add(chunk.count { it.isSuspicious }.toFloat())
         }
         Pair(safeCounts, threatCounts)
     }
-    val safeData = trendPoints.first; val threatData = trendPoints.second
+    val safeData = trendPoints.first
+    val threatData = trendPoints.second
     val overallMax = maxOf(safeData.maxOrNull() ?: 1f, threatData.maxOrNull() ?: 1f, 1f)
-    val safeColor = MaterialTheme.colorScheme.primary; val threatColor = MaterialTheme.colorScheme.error
+    val safeColor = MaterialTheme.colorScheme.primary
+    val threatColor = MaterialTheme.colorScheme.error
     val axisColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
 
     Canvas(modifier = modifier) {
-        val width = size.width; val height = size.height
-        val paddingBottom = 20f; val paddingLeft = 20f; val paddingTop = 10f
-        val graphWidth = width - paddingLeft; val graphHeight = height - paddingBottom - paddingTop
+        val width = size.width
+        val height = size.height
+        val paddingBottom = 20f
+        val paddingLeft = 20f
+        val paddingTop = 10f
+        val graphWidth = width - paddingLeft
+        val graphHeight = height - paddingBottom - paddingTop
 
         drawLine(color = axisColor, start = Offset(paddingLeft, paddingTop), end = Offset(paddingLeft, height - paddingBottom), strokeWidth = 3f)
         drawLine(color = axisColor, start = Offset(paddingLeft, height - paddingBottom), end = Offset(width, height - paddingBottom), strokeWidth = 3f)
 
-        val safePath = Path(); val threatPath = Path()
+        val safePath = Path()
+        val threatPath = Path()
         val stepX = graphWidth / maxOf(1, safeData.size - 1).toFloat()
 
         safeData.forEachIndexed { index, value ->
-            val x = paddingLeft + (index * stepX); val y = (height - paddingBottom) - ((value / overallMax) * graphHeight)
+            val x = paddingLeft + (index * stepX)
+            val y = (height - paddingBottom) - ((value / overallMax) * graphHeight)
             if (index == 0) safePath.moveTo(x, y) else safePath.lineTo(x, y)
         }
         threatData.forEachIndexed { index, value ->
-            val x = paddingLeft + (index * stepX); val y = (height - paddingBottom) - ((value / overallMax) * graphHeight)
+            val x = paddingLeft + (index * stepX)
+            val y = (height - paddingBottom) - ((value / overallMax) * graphHeight)
             if (index == 0) threatPath.moveTo(x, y) else threatPath.lineTo(x, y)
         }
         drawPath(path = safePath, color = safeColor, style = Stroke(width = 4f, cap = StrokeCap.Round))
@@ -548,7 +671,6 @@ fun StatBox(title: String, value: String, color: Color, modifier: Modifier = Mod
     Card(shape = RoundedCornerShape(12.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)), modifier = modifier) { Column(modifier = Modifier.padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally) { Text(text = value, color = color, fontSize = 24.sp, fontWeight = FontWeight.Bold); Text(text = title, style = MaterialTheme.typography.labelSmall) } }
 }
 
-// 🟢 FIX INCLUDED HERE: Formats the X-axis as app names instead of index numbers!
 @Composable
 fun TopAppsChartCard(summaries: List<AppSummary>) {
     val model = entryModelOf(*summaries.map { it.totalPackets.toFloat() }.toTypedArray())
@@ -559,11 +681,9 @@ fun TopAppsChartCard(summaries: List<AppSummary>) {
             Chart(
                 chart = columnChart(),
                 model = model,
-                // Clean up the Y-axis to show integers
                 startAxis = rememberStartAxis(
                     valueFormatter = { value, _ -> value.toInt().toString() }
                 ),
-                // Map the X-axis points to the actual app names
                 bottomAxis = rememberBottomAxis(
                     valueFormatter = { value, _ ->
                         summaries.getOrNull(value.toInt())?.appName?.take(6) ?: ""

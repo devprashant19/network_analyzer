@@ -138,7 +138,9 @@ class TrafficCaptureService : VpnService() {
         Log.d("InnovaVPN", "Starting NIO traffic interception.")
 
         val fd = vpnInterface?.fileDescriptor ?: return
-        val dao = TrafficDatabase.getDatabase(this).trafficDao()
+        val db = TrafficDatabase.getDatabase(this)
+        val dao = db.trafficDao()
+        val anomalyDao = db.anomalyDao()
         val attributionHelper = AppAttributionHelper(this)
         val threatEngine = ThreatEngine(this).also { it.loadBlocklist() }
 
@@ -209,7 +211,7 @@ class TrafficCaptureService : VpnService() {
                                 appName = attributionHelper.getAppName(realUid),
                                 packageName = attributionHelper.getPackageName(realUid)
                             )
-                            val evaluatedEvent = threatEngine.evaluatePacket(finalizedEvent)
+                            val evaluatedEvent = threatEngine.evaluatePacket(finalizedEvent, anomalyDao, serviceScope)
                             
                             // 🔥 Active Blocking Logic 🔥
                             shouldDropPacket = evaluatedEvent.isSuspicious

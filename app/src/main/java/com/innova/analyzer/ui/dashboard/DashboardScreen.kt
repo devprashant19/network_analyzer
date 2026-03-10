@@ -20,6 +20,7 @@ import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Public
+import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -46,7 +47,9 @@ import java.util.Locale
 import androidx.compose.ui.zIndex
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
-
+import androidx.compose.animation.*
+import androidx.compose.foundation.clickable
+import androidx.compose.ui.text.font.FontFamily
 @Composable
 fun DashboardScreen(
     viewModel: DashboardViewModel = viewModel(),
@@ -342,6 +345,7 @@ fun NativeAppIcon(uid: Int, modifier: Modifier = Modifier) {
 @Composable
 fun NetworkRow(event: NetworkEvent) {
     val isDangerous = event.isSuspicious
+    var expanded by remember { mutableStateOf(false) }
 
     // Format the timestamp (e.g., 14:32:05)
     val timeString = remember(event.timestamp) {
@@ -350,7 +354,9 @@ fun NetworkRow(event: NetworkEvent) {
     }
 
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { expanded = !expanded },
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
             containerColor = if (isDangerous) MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.15f)
@@ -360,99 +366,172 @@ fun NetworkRow(event: NetworkEvent) {
             androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.5f))
         } else null
     ) {
-        Row(
-            modifier = Modifier.padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(40.dp)
-                    .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.surface)
-                    .padding(8.dp),
-                contentAlignment = Alignment.Center
+        Column {
+            Row(
+                modifier = Modifier.padding(12.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                if (event.appName != null) {
-                    NativeAppIcon(uid = event.uid, modifier = Modifier.fillMaxSize())
-                } else {
-                    Icon(
-                        imageVector = Icons.Default.Public,
-                        contentDescription = "Web",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                Box(
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.surface)
+                        .padding(8.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (event.appName != null) {
+                        NativeAppIcon(uid = event.uid, modifier = Modifier.fillMaxSize())
+                    } else {
+                        Icon(
+                            imageVector = Icons.Default.Public,
+                            contentDescription = "Web",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.width(12.dp))
+
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = event.appName ?: event.packageName ?: "System Process",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = if (isDangerous) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = event.domain ?: "${event.destIp}:${event.destPort}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+
+                // Right side: Protocol, Timestamp, and Icons
+                Column(horizontalAlignment = Alignment.End) {
+                    val protocolColor = when (event.protocol) {
+                        ConnectionProtocol.TCP -> Color(0xFF4CAF50)
+                        ConnectionProtocol.UDP -> Color(0xFF2196F3)
+                        ConnectionProtocol.DNS -> Color(0xFFFF9800)
+                        else -> MaterialTheme.colorScheme.onSurfaceVariant
+                    }
+
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Surface(
+                            color = protocolColor.copy(alpha = 0.1f),
+                            shape = RoundedCornerShape(4.dp)
+                        ) {
+                            Text(
+                                text = event.protocol.name,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = protocolColor,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.width(6.dp))
+
+                        if (isDangerous) {
+                            Icon(
+                                imageVector = Icons.Default.BugReport,
+                                contentDescription = "Threat",
+                                tint = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        } else if (event.destPort == 443) {
+                            Icon(
+                                imageVector = Icons.Default.Lock,
+                                contentDescription = "Secure",
+                                tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
+                                modifier = Modifier.size(14.dp)
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    Text(
+                        text = "$timeString • ${event.totalBytes} B • ${event.packetCount} pkts",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.width(12.dp))
+            // ==========================================
+            // 2. THE DROPDOWN DETAILS (Animated)
+            // ==========================================
+            AnimatedVisibility(
+                visible = expanded,
+                enter = fadeIn() + expandVertically(animationSpec = androidx.compose.animation.core.tween(300)),
+                exit = fadeOut() + shrinkVertically(animationSpec = androidx.compose.animation.core.tween(300))
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                        .padding(16.dp)
+                ) {
+                    Text("Packet Inspection Details", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
+                    Spacer(modifier = Modifier.height(12.dp))
 
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = event.appName ?: event.packageName ?: "System Process",
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = if (isDangerous) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Text(
-                    text = event.domain ?: "${event.destIp}:${event.destPort}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
+                    Row(modifier = Modifier.fillMaxWidth()) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            PacketDetailItem("Time", timeString)
+                            PacketDetailItem("Source IP", event.sourceIp)
+                            PacketDetailItem("Source Port", event.sourcePort.toString())
+                            PacketDetailItem("UID", event.uid.toString())
+                        }
+                        Column(modifier = Modifier.weight(1f)) {
+                            PacketDetailItem("Total Size", "${event.totalBytes} Bytes")
+                            PacketDetailItem("Remote IP", event.destIp)
+                            PacketDetailItem("Remote Port", event.destPort.toString())
+                            PacketDetailItem("Remote Host", event.domain ?: "Unknown/Direct IP")
+                        }
+                    }
 
-            // Right side: Protocol, Timestamp, and Icons
-            Column(horizontalAlignment = Alignment.End) {
-                val protocolColor = when (event.protocol) {
-                    ConnectionProtocol.TCP -> Color(0xFF4CAF50)
-                    ConnectionProtocol.UDP -> Color(0xFF2196F3)
-                    ConnectionProtocol.DNS -> Color(0xFFFF9800)
-                    else -> MaterialTheme.colorScheme.onSurfaceVariant
-                }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f))
+                    Spacer(modifier = Modifier.height(8.dp))
 
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Surface(
-                        color = protocolColor.copy(alpha = 0.1f),
-                        shape = RoundedCornerShape(4.dp)
-                    ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.Security,
+                            contentDescription = null,
+                            modifier = Modifier.size(14.dp),
+                            tint = if (isDangerous) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.tertiary
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = event.protocol.name,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = protocolColor,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.width(6.dp))
-
-                    if (isDangerous) {
-                        Icon(
-                            imageVector = Icons.Default.BugReport,
-                            contentDescription = "Threat",
-                            tint = MaterialTheme.colorScheme.error,
-                            modifier = Modifier.size(16.dp)
-                        )
-                    } else if (event.destPort == 443) {
-                        Icon(
-                            imageVector = Icons.Default.Lock,
-                            contentDescription = "Secure",
-                            tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
-                            modifier = Modifier.size(14.dp)
+                            text = if (isDangerous) "Threat Engine: BLOCKED (Known Tracker/Malware)" else "Threat Engine: SAFE (No flags detected)",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (isDangerous) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.tertiary
                         )
                     }
                 }
-
-                Spacer(modifier = Modifier.height(4.dp))
-
-                Text(
-                    text = "$timeString • ${event.totalBytes} B • ${event.packetCount} pkts",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
             }
         }
+    }
+}
+
+// Helper composable for the dropdown items
+@Composable
+fun PacketDetailItem(label: String, value: String) {
+    Column(modifier = Modifier.padding(bottom = 8.dp)) {
+        Text(text = label, fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(
+            text = value,
+            fontSize = 12.sp,
+            color = MaterialTheme.colorScheme.onSurface,
+            fontWeight = FontWeight.Medium,
+            fontFamily = FontFamily.Monospace,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
     }
 }

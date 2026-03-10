@@ -5,11 +5,14 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import com.innova.analyzer.data.models.NetworkEvent
+import com.innova.analyzer.data.models.AppProfile
+import com.innova.analyzer.data.models.KnownServer
 
-@Database(entities = [NetworkEvent::class], version = 2, exportSchema = false)
+@Database(entities = [NetworkEvent::class, AppProfile::class, KnownServer::class], version = 3, exportSchema = false)
 abstract class TrafficDatabase : RoomDatabase() {
 
     abstract fun trafficDao(): TrafficDao
+    abstract fun anomalyDao(): AnomalyDao
 
     companion object {
         @Volatile
