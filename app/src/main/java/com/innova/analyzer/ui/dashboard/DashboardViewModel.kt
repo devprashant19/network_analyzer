@@ -16,28 +16,35 @@ import java.util.concurrent.ConcurrentLinkedDeque
 
 class DashboardViewModel(application: Application) : AndroidViewModel(application) {
 
-    // 1. The Live Feed (In-Memory) UI State
+    // 1. The Live Feed (In-Memory) UI State (Capped at 1,000 to prevent lag)
     private val _trafficLogs = MutableStateFlow<List<NetworkEvent>>(emptyList())
     val trafficLogs: StateFlow<List<NetworkEvent>> = _trafficLogs.asStateFlow()
 
-    // 2. The VPN Status UI State
+    // 2. The Lifetime Counter (Counts forever, regardless of UI limits)
+    private val _totalPacketCount = MutableStateFlow(0)
+    val totalPacketCount: StateFlow<Int> = _totalPacketCount.asStateFlow()
+
+    // 3. The VPN Status UI State
     private val _isVpnActive = MutableStateFlow(false)
     val isVpnActive: StateFlow<Boolean> = _isVpnActive.asStateFlow()
 
-    // 🟢 Thread-safe memory buffer to catch the firehose
+    // Thread-safe memory buffer to catch the firehose
     private val rawPacketBuffer = ConcurrentLinkedDeque<NetworkEvent>()
 
     init {
         // 🟢 BOOT SEQUENCE: Load historical data from permanent storage instantly!
         viewModelScope.launch(Dispatchers.IO) {
             val dao = TrafficDatabase.getDatabase(getApplication()).trafficDao()
-            val history = dao.getRecentLogs() // Grabs the last 1000 packets
+            val history = dao.getRecentLogs()
 
             if (history.isNotEmpty()) {
                 // Load history into our high-speed buffer
                 rawPacketBuffer.addAll(history)
-                // Immediately paint the UI so it doesn't look empty
+                // Instantly paint the screen
                 _trafficLogs.value = history
+
+                // 🟢 FIX: Fetch the TRUE lifetime count from the database, not just the 1000 limit!
+                _totalPacketCount.value = dao.getTotalCount()
             }
         }
 
@@ -45,9 +52,13 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
         // This runs as fast as possible in the background. No UI updates happen here!
         viewModelScope.launch(Dispatchers.IO) {
             TrafficStream.trafficFlow.collect { realEvent ->
-                rawPacketBuffer.addFirst(realEvent) // Add to the top of the list
+                // Increment the massive counter
+                _totalPacketCount.value += 1
 
-                // 🟢 Keep memory clean: Expanded to hold the last 1000 packets!
+                // Add the new packet to the top of the UI list
+                rawPacketBuffer.addFirst(realEvent)
+
+                // Keep memory clean: Limit UI list to 1000 items so the screen doesn't lag
                 if (rawPacketBuffer.size > 1000) {
                     rawPacketBuffer.removeLast()
                 }
@@ -69,8 +80,6 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
 
     fun setVpnActive(active: Boolean) {
         _isVpnActive.value = active
-        // 🟢 Removed the auto-wipe logic here!
-        // Now, pausing the VPN won't accidentally delete your beautiful report data.
     }
 
     // The End Session feature called from your ReportScreen
@@ -80,9 +89,10 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
             val dao = TrafficDatabase.getDatabase(getApplication()).trafficDao()
             dao.clearAll()
 
-            // 2. Clear the live UI memory buffers
+            // 2. Clear the live UI memory buffers and the counter!
             rawPacketBuffer.clear()
             _trafficLogs.value = emptyList()
+            _totalPacketCount.value = 0
         }
     }
 }

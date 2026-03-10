@@ -34,7 +34,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.compose.ui.zIndex
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -44,6 +43,7 @@ import com.innova.analyzer.data.models.NetworkEvent
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import androidx.compose.ui.zIndex
 
 @Composable
 fun DashboardScreen(
@@ -53,6 +53,10 @@ fun DashboardScreen(
 ) {
     val logs by viewModel.trafficLogs.collectAsStateWithLifecycle()
     val isVpnActive by viewModel.isVpnActive.collectAsStateWithLifecycle()
+
+    // 🟢 The Lifetime Counter (Goes past 1,000!)
+    val totalPacketCount by viewModel.totalPacketCount.collectAsStateWithLifecycle()
+
     val context = LocalContext.current
 
     val vpnPermissionLauncher = rememberLauncherForActivityResult(
@@ -132,7 +136,8 @@ fun DashboardScreen(
         Column(modifier = Modifier.fillMaxSize()) {
             // Keep the Header above the list
             Box(modifier = Modifier.zIndex(1f)) {
-                DashboardHeader(logs.size, isDarkTheme, isVpnActive, onThemeToggle, onToggleVpn)
+                // 🟢 Pass the true totalPacketCount to the UI here
+                DashboardHeader(totalPacketCount, isDarkTheme, isVpnActive, onThemeToggle, onToggleVpn)
             }
 
             if (logs.isEmpty()) {
@@ -213,7 +218,7 @@ fun DashboardHeader(
 
                 Spacer(modifier = Modifier.height(16.dp))
                 Text(
-                    text = "$count",
+                    text = "$count", // This will now accurately reflect the full lifetime count
                     fontSize = 48.sp,
                     color = MaterialTheme.colorScheme.onSurface,
                     fontWeight = FontWeight.Light,
@@ -312,7 +317,7 @@ fun NativeAppIcon(uid: Int, modifier: Modifier = Modifier) {
     }
 }
 
-// 🟢 NEW: Upgraded NetworkRow with Timestamps and Threat Indicators!
+// 🟢 Upgraded NetworkRow with Timestamps and Threat Indicators
 @Composable
 fun NetworkRow(event: NetworkEvent) {
     val isDangerous = event.isSuspicious
@@ -380,9 +385,9 @@ fun NetworkRow(event: NetworkEvent) {
             // Right side: Protocol, Timestamp, and Icons
             Column(horizontalAlignment = Alignment.End) {
                 val protocolColor = when (event.protocol) {
-                    ConnectionProtocol.TCP -> MaterialTheme.colorScheme.onSurfaceVariant
-                    ConnectionProtocol.UDP -> MaterialTheme.colorScheme.secondary
-                    ConnectionProtocol.DNS -> MaterialTheme.colorScheme.tertiary
+                    ConnectionProtocol.TCP -> Color(0xFF4CAF50)
+                    ConnectionProtocol.UDP -> Color(0xFF2196F3)
+                    ConnectionProtocol.DNS -> Color(0xFFFF9800)
                     else -> MaterialTheme.colorScheme.onSurfaceVariant
                 }
 

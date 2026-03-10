@@ -9,9 +9,6 @@ import android.os.Build
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.core.app.NotificationCompat
-import androidx.core.content.ContextCompat
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -27,81 +24,39 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.app.NotificationCompat
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.innova.analyzer.core.network.TrafficStream
 import com.innova.analyzer.data.models.ConnectionProtocol
 import com.innova.analyzer.data.models.NetworkEvent
+import com.innova.analyzer.ui.dashboard.DashboardViewModel
+import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.GlobalScope // Required for the demo button simulation
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AlertsScreen() {
+fun AlertsScreen(viewModel: DashboardViewModel) {
     val context = LocalContext.current
 
     var pushNotificationsEnabled by remember { mutableStateOf(true) }
     var strictModeEnabled by remember { mutableStateOf(false) }
     var customDomainInput by remember { mutableStateOf("") }
 
-    val blockedLogs = remember { mutableStateListOf<NetworkEvent>() }
+    // 🟢 Grab the persistent history from the shared ViewModel!
+    val rawLogs by viewModel.trafficLogs.collectAsStateWithLifecycle()
 
-    // 🟢 The Live Memory List + Smart Notification Debouncer
-    LaunchedEffect(strictModeEnabled, pushNotificationsEnabled) {
-        val lastNotifiedTime = mutableMapOf<String, Long>()
-
-        TrafficStream.trafficFlow.collect { event ->
-            val isThreat = event.isSuspicious
-            val isStrictUdpDrop = strictModeEnabled && event.protocol == ConnectionProtocol.UDP
-
-            if (isThreat || isStrictUdpDrop) {
-                // 1. Update visual list
-                blockedLogs.add(0, event)
-                if (blockedLogs.size > 50) {
-                    blockedLogs.removeLast()
-                }
-
-                // 2. Handle Push Notifications with Spam Filter
-                if (pushNotificationsEnabled && isStrictUdpDrop) {
-                    val appName = event.appName ?: "Background Process"
-                    val currentTime = System.currentTimeMillis()
-
-                    // Only notify once every 5 seconds per app
-                    if (currentTime - (lastNotifiedTime[appName] ?: 0L) > 5000L) {
-                        lastNotifiedTime[appName] = currentTime
-
-                        val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-                        val channelId = "innova_alerts"
-
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                            val channel = NotificationChannel(
-                                channelId,
-                                "Threat Alerts",
-                                NotificationManager.IMPORTANCE_HIGH
-                            )
-                            notificationManager.createNotificationChannel(channel)
-                        }
-
-                        val notificationId = appName.hashCode()
-
-                        val builder = NotificationCompat.Builder(context, channelId)
-                            .setSmallIcon(android.R.drawable.ic_secure)
-                            .setContentTitle("🛡️ Strict Mode Active")
-                            .setContentText("Blocked hidden UDP traffic from $appName.")
-                            .setPriority(NotificationCompat.PRIORITY_HIGH)
-                            .setAutoCancel(true)
-
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                            if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
-                                notificationManager.notify(notificationId, builder.build())
-                            }
-                        } else {
-                            notificationManager.notify(notificationId, builder.build())
-                        }
-                    }
-                }
-            }
+    // Filter the history to ONLY show threats (or UDP if strict mode is on)
+    val blockedLogs = remember(rawLogs, strictModeEnabled) {
+        rawLogs.filter { event ->
+            event.isSuspicious || (strictModeEnabled && event.protocol == ConnectionProtocol.UDP)
         }
     }
 
@@ -246,7 +201,7 @@ fun AlertsScreen() {
                     Text("Add Rule", color = MaterialTheme.colorScheme.onPrimary, fontWeight = FontWeight.Bold)
                 }
 
-                // 🟢 NEW: HACKATHON DEMO BUTTON
+                // 🟢 HACKATHON DEMO BUTTON
                 Spacer(modifier = Modifier.height(16.dp))
                 Button(
                     onClick = {
@@ -265,7 +220,7 @@ fun AlertsScreen() {
                             sourcePort = 12345
                         )
 
-                        // Emit to the live stream
+                        // Emit to the live stream so it runs through the whole architecture!
                         GlobalScope.launch {
                             TrafficStream.emitEvent(fakeThreat)
                         }
@@ -291,17 +246,32 @@ fun AlertsScreen() {
         )
 
         LazyColumn(
-            modifier = Modifier.fillMaxSize()
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(bottom = 80.dp) // Keep clear of the bottom nav bar!
         ) {
-            items(blockedLogs) { event ->
-                BlockedTrafficCard(event)
+            if (blockedLogs.isEmpty()) {
+                item {
+                    Box(modifier = Modifier.fillMaxWidth().height(100.dp), contentAlignment = Alignment.Center) {
+                        Text("No threats detected.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            } else {
+                items(blockedLogs) { event ->
+                    BlockedTrafficCard(event)
+                }
             }
         }
     }
 }
 
+// 🟢 Upgraded with Timestamps!
 @Composable
 fun BlockedTrafficCard(event: NetworkEvent) {
+    val timeString = remember(event.timestamp) {
+        val sdf = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
+        sdf.format(Date(event.timestamp))
+    }
+
     Card(
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)),
@@ -320,6 +290,7 @@ fun BlockedTrafficCard(event: NetworkEvent) {
                     fontWeight = FontWeight.Bold,
                     fontSize = 14.sp
                 )
+                Spacer(modifier = Modifier.height(2.dp))
                 Text(
                     text = event.domain ?: event.destIp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -328,20 +299,29 @@ fun BlockedTrafficCard(event: NetworkEvent) {
                 )
             }
 
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier
-                    .background(MaterialTheme.colorScheme.error.copy(alpha = 0.15f), RoundedCornerShape(8.dp))
-                    .padding(horizontal = 8.dp, vertical = 4.dp)
-            ) {
-                Icon(Icons.Default.Block, contentDescription = "Blocked", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(14.dp))
-                Spacer(modifier = Modifier.width(4.dp))
+            Column(horizontalAlignment = Alignment.End) {
                 Text(
-                    text = event.protocol.name,
-                    color = MaterialTheme.colorScheme.error,
+                    text = timeString,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold
+                    fontWeight = FontWeight.SemiBold
                 )
+                Spacer(modifier = Modifier.height(4.dp))
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .background(MaterialTheme.colorScheme.error.copy(alpha = 0.15f), RoundedCornerShape(8.dp))
+                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                ) {
+                    Icon(Icons.Default.Block, contentDescription = "Blocked", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(12.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = event.protocol.name,
+                        color = MaterialTheme.colorScheme.error,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
             }
         }
     }

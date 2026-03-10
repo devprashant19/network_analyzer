@@ -33,7 +33,8 @@ fun MainNavGraph(
             )
         }
         composable(BottomNavItem.Alerts.route) {
-            AlertsScreen()
+            // 🟢 FIX: Passed the sharedViewModel so AlertsScreen can filter the threats!
+            AlertsScreen(viewModel = sharedViewModel)
         }
         composable(BottomNavItem.Report.route) {
             ReportScreen(viewModel = sharedViewModel) // 🟢 3. FEED IT TO THE REPORT SCREEN
