@@ -21,6 +21,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.mutableStateOf
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.rememberNavController
+import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.PeriodicWorkRequestBuilder
+import androidx.work.WorkManager
+import java.util.concurrent.TimeUnit
+import com.innova.analyzer.core.threats.BaselineAnalysisWorker
 import com.innova.analyzer.core.vpn.TrafficCaptureService
 import com.innova.analyzer.data.local.TrafficDatabase
 import com.innova.analyzer.ui.dashboard.DashboardViewModel
@@ -69,6 +74,17 @@ class MainActivity : ComponentActivity() {
                 notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
             }
         }
+
+        // 3. Schedule the Anomaly Detection Background Worker
+        val baselineWorkRequest = PeriodicWorkRequestBuilder<BaselineAnalysisWorker>(
+            1, TimeUnit.HOURS // Runs approximately every hour
+        ).build()
+
+        WorkManager.getInstance(this).enqueueUniquePeriodicWork(
+            "AnomalyBaselineAnalysis",
+            ExistingPeriodicWorkPolicy.KEEP, // Don't override if already scheduled
+            baselineWorkRequest
+        )
 
         // 3. The Modern Compose Navigation UI
         setContent {

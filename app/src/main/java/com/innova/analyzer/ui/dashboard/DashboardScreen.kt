@@ -44,6 +44,8 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import androidx.compose.ui.zIndex
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkManager
 
 @Composable
 fun DashboardScreen(
@@ -182,6 +184,25 @@ fun DashboardHeader(
         Box(
             modifier = Modifier.fillMaxWidth()
         ) {
+            val context = LocalContext.current
+
+            // 🟢 Left side: Manual Anomaly Trigger for Demo purposes
+            IconButton(
+                onClick = {
+                    val workRequest = OneTimeWorkRequestBuilder<com.innova.analyzer.core.threats.BaselineAnalysisWorker>().build()
+                    WorkManager.getInstance(context).enqueue(workRequest)
+                    android.widget.Toast.makeText(context, "Running Anomaly Scan...", android.widget.Toast.LENGTH_SHORT).show()
+                },
+                modifier = Modifier.align(Alignment.TopStart).padding(12.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.BugReport,
+                    contentDescription = "Run Anomaly Scan",
+                    tint = MaterialTheme.colorScheme.error
+                )
+            }
+
+            // Right side: Theme Toggle
             IconButton(
                 onClick = onThemeToggle,
                 modifier = Modifier.align(Alignment.TopEnd).padding(12.dp)
