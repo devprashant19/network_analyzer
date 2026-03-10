@@ -1,17 +1,19 @@
 package com.innova.analyzer.ui.navigation
 
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.List
+import androidx.compose.material.icons.filled.Analytics // 🟢 Upgraded to a sleek chart icon!
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar 
+import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.currentBackStackEntryAsState
@@ -20,7 +22,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 sealed class BottomNavItem(val route: String, val title: String, val icon: ImageVector) {
     object Dashboard : BottomNavItem("dashboard", "Dashboard", Icons.Default.Shield)
     object Alerts : BottomNavItem("alerts", "Alerts", Icons.Default.Warning)
-    object Report : BottomNavItem("report", "Report", Icons.Default.List)
+    object Report : BottomNavItem("report", "Reports", Icons.Default.Analytics)
 }
 
 // 2. The UI Component
@@ -59,11 +61,11 @@ fun BottomNavBar(navController: NavHostController, isDarkTheme: Boolean) {
                     Text(
                         text = item.title,
                         color = if (selected) highlightColor else unselectedColor,
-                        fontWeight = if (selected) androidx.compose.ui.text.font.FontWeight.Bold else androidx.compose.ui.text.font.FontWeight.Normal
+                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal
                     )
                 },
                 selected = selected,
-                colors = androidx.compose.material3.NavigationBarItemDefaults.colors(
+                colors = NavigationBarItemDefaults.colors(
                     indicatorColor = highlightColor.copy(alpha = 0.15f)
                 ),
                 onClick = {

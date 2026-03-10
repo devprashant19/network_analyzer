@@ -15,16 +15,16 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.ui.Modifier
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
-import androidx.lifecycle.lifecycleScope
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.rememberNavController
 import com.innova.analyzer.core.vpn.TrafficCaptureService
-import com.innova.analyzer.data.local.FakeDataInjector
 import com.innova.analyzer.data.local.TrafficDatabase
+import com.innova.analyzer.ui.dashboard.DashboardViewModel
 import com.innova.analyzer.ui.navigation.BottomNavBar
 import com.innova.analyzer.ui.navigation.MainNavGraph
 import com.innova.analyzer.ui.theme.InnovaTheme
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
 
@@ -45,19 +45,17 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        // 2. Initialize the Database & Start Fake Data Injector
+        // 2. Initialize the Database
         val db = TrafficDatabase.getDatabase(this)
         val dao = db.trafficDao()
 
-        // lifecycleScope.launch(Dispatchers.IO) {
-        //     FakeDataInjector.startInjecting(dao)
-        // }
-
         // 3. The Modern Compose Navigation UI
         setContent {
-            var isDarkTheme by androidx.compose.runtime.remember { 
-                androidx.compose.runtime.mutableStateOf(true) 
-            }
+            var isDarkTheme by remember { mutableStateOf(true) }
+
+            // 🟢 CRITICAL ARCHITECTURE FIX:
+            // We create the ViewModel HERE at the Activity level so it survives tab switches!
+            val sharedViewModel: DashboardViewModel = viewModel()
 
             InnovaTheme(darkTheme = isDarkTheme) {
                 val navController = rememberNavController()
@@ -66,12 +64,14 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     bottomBar = { BottomNavBar(navController, isDarkTheme = isDarkTheme) }
                 ) { innerPadding ->
-                    // This hosts your Dashboard, Alerts, and Report screens!
+
+                    // Pass the shared ViewModel into the NavGraph
                     MainNavGraph(
-                        navController = navController, 
+                        navController = navController,
                         innerPadding = innerPadding,
                         isDarkTheme = isDarkTheme,
-                        onThemeToggle = { isDarkTheme = !isDarkTheme }
+                        onThemeToggle = { isDarkTheme = !isDarkTheme },
+                        sharedViewModel = sharedViewModel // 🟢 Injecting the brain!
                     )
                 }
             }
@@ -79,7 +79,7 @@ class MainActivity : ComponentActivity() {
     }
 
     // ------------------------------------------------------------------
-    // KEEPING THESE FOR LATER: We will trigger these from the Dashboard!
+    // KEEPING THESE FOR LATER: Triggered from the Dashboard
     // ------------------------------------------------------------------
 
     fun requestVpnPermission() {
