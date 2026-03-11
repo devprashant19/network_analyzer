@@ -71,7 +71,7 @@ data class AppSummary(
     val logs: List<NetworkEvent>,
     val totalBytes: Long,
     val scoreBreakdown: ScoreBreakdown,
-    val trafficCategories: Map<String, Int> // Holds the heuristic data categories
+    val trafficCategories: Map<String, Long> // Holds the heuristic data categories
 )
 
 // The Core Scoring Algorithm (100% Offline)
@@ -125,17 +125,17 @@ fun calculatePrivacyScore(packets: List<NetworkEvent>): ScoreBreakdown {
 }
 
 // The Heuristic Engine to categorize packet behaviors
-fun generateTrafficCategories(packets: List<NetworkEvent>): Map<String, Int> {
-    var mediaStreaming = 0
-    var dataUploads = 0
-    var secureApiParsing = 0
-    var insecureWeb = 0
-    var dnsResolution = 0
-    var backgroundHeartbeats = 0
-    var realTimeUdp = 0
-    var telemetryAndTracking = 0
-    var customSockets = 0
-    var miscellaneous = 0
+fun generateTrafficCategories(packets: List<NetworkEvent>): Map<String, Long> {
+    var mediaStreaming = 0L
+    var dataUploads = 0L
+    var secureApiParsing = 0L
+    var insecureWeb = 0L
+    var dnsResolution = 0L
+    var backgroundHeartbeats = 0L
+    var realTimeUdp = 0L
+    var telemetryAndTracking = 0L
+    var customSockets = 0L
+    var miscellaneous = 0L
 
     packets.forEach { p ->
         // Heuristic: If it comes FROM port 443/80, it's downloading to the device.
@@ -143,35 +143,35 @@ fun generateTrafficCategories(packets: List<NetworkEvent>): Map<String, Int> {
         val payload = p.totalBytes
 
         when {
-            // 1. Telemetry & Tracking: Caught by our ThreatEngine
-            p.isSuspicious -> telemetryAndTracking++
+            // 1. Telemetry & Tracking: caught by ThreatEngine
+            p.isSuspicious -> telemetryAndTracking += payload
 
-            // 2. DNS Resolution: Looking up website addresses
-            p.protocol == ConnectionProtocol.DNS || p.destPort == 53 || p.sourcePort == 53 -> dnsResolution++
+            // 2. DNS Resolution
+            p.protocol == ConnectionProtocol.DNS || p.destPort == 53 || p.sourcePort == 53 -> dnsResolution += payload
 
-            // 3. Real-Time / VoIP: UDP traffic (usually gaming or voice/video calls)
-            p.protocol == ConnectionProtocol.UDP -> realTimeUdp++
+            // 3. Real-Time / VoIP
+            p.protocol == ConnectionProtocol.UDP -> realTimeUdp += payload
 
-            // 4. Insecure Web: Cleartext HTTP traffic
-            p.destPort == 80 || p.sourcePort == 80 -> insecureWeb++
+            // 4. Insecure Web
+            p.destPort == 80 || p.sourcePort == 80 -> insecureWeb += payload
 
-            // 5. Media & Streaming (Downlink): Large incoming packets
-            isInbound && payload > 1000 -> mediaStreaming++
+            // 5. Media & Streaming
+            isInbound && payload > 1000 -> mediaStreaming += payload
 
-            // 6. Data Uploads (Uplink): Large outgoing packets
-            !isInbound && payload > 1000 -> dataUploads++
+            // 6. Data Uploads
+            !isInbound && payload > 1000 -> dataUploads += payload
 
-            // 7. Background Heartbeats: Tiny TCP packets keeping the connection alive
-            payload < 64 -> backgroundHeartbeats++
+            // 7. Background Heartbeats
+            payload < 64 -> backgroundHeartbeats += payload
 
-            // 8. Secure API Parsing: Standard sized HTTPS traffic
-            p.destPort == 443 || p.sourcePort == 443 -> secureApiParsing++
+            // 8. Secure API Parsing
+            p.destPort == 443 || p.sourcePort == 443 -> secureApiParsing += payload
 
-            // 9. Custom Sockets: Non-standard ports (Not web, not DNS)
-            p.destPort !in listOf(80, 443, 53) && p.sourcePort !in listOf(80, 443, 53) -> customSockets++
+            // 9. Custom Sockets
+            p.destPort !in listOf(80, 443, 53) && p.sourcePort !in listOf(80, 443, 53) -> customSockets += payload
 
-            // 10. Miscellaneous: TCP ACKs, overhead, unclassified
-            else -> miscellaneous++
+            // 10. Miscellaneous
+            else -> miscellaneous += payload
         }
     }
 
@@ -407,7 +407,8 @@ fun AppSummaryCard(summary: AppSummary, onClick: () -> Unit) {
             Column(modifier = Modifier.weight(1f)) {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Text(summary.appName, color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Bold, fontSize = 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text("${summary.totalPackets} pkts", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    val mbSize = String.format(java.util.Locale.US, "%.2f MB", summary.totalBytes / (1024f * 1024f))
+                    Text(mbSize, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 }
                 Spacer(modifier = Modifier.height(4.dp))
                 Text("TCP: ${summary.tcpCount} | UDP: ${summary.udpCount} | DNS: ${summary.dnsCount}", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
@@ -501,10 +502,10 @@ fun AppDetailReport(summary: AppSummary, onBackClick: () -> Unit) {
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
-                        val maxPackets = summary.trafficCategories.values.maxOrNull()?.toFloat() ?: 1f
+                        val maxBytes = summary.trafficCategories.values.maxOrNull()?.toFloat() ?: 1f
 
-                        summary.trafficCategories.forEach { (category, count) ->
-                            val progress = count / maxPackets
+                        summary.trafficCategories.forEach { (category, bytes) ->
+                            val progress = bytes / maxBytes
                             val barColor = when {
                                 category.contains("Tracking") || category.contains("Insecure") -> MaterialTheme.colorScheme.error
                                 category.contains("Streaming") || category.contains("Uploads") -> MaterialTheme.colorScheme.primary
@@ -514,7 +515,8 @@ fun AppDetailReport(summary: AppSummary, onBackClick: () -> Unit) {
                             Column(modifier = Modifier.padding(vertical = 6.dp)) {
                                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                     Text(category, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                                    Text("$count pkts", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    val mbSize = String.format(java.util.Locale.US, "%.2f MB", bytes / (1024f * 1024f))
+                                    Text(mbSize, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                                 Spacer(modifier = Modifier.height(4.dp))
                                 LinearProgressIndicator(
@@ -675,7 +677,7 @@ fun StatBox(title: String, value: String, color: Color, modifier: Modifier = Mod
 
 @Composable
 fun TopAppsChartCard(summaries: List<AppSummary>) {
-    val model = entryModelOf(*summaries.map { it.totalPackets.toFloat() }.toTypedArray())
+    val model = entryModelOf(*summaries.map { it.totalBytes / (1024f * 1024f) }.toTypedArray())
     Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text("Top Bandwidth Users", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
@@ -684,7 +686,7 @@ fun TopAppsChartCard(summaries: List<AppSummary>) {
                 chart = columnChart(),
                 model = model,
                 startAxis = rememberStartAxis(
-                    valueFormatter = { value, _ -> value.toInt().toString() }
+                    valueFormatter = { value, _ -> String.format(java.util.Locale.US, "%.1f MB", value) }
                 ),
                 bottomAxis = rememberBottomAxis(
                     valueFormatter = { value, _ ->
