@@ -391,15 +391,15 @@ fun AppSummaryCard(summary: AppSummary, onClick: () -> Unit) {
     Card(
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
-            containerColor = if (isDangerous) MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.2f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+            containerColor = if (isDangerous) MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
         ),
         border = androidx.compose.foundation.BorderStroke(
             width = if (isDangerous) 1.dp else 0.5.dp,
-            color = if (isDangerous) MaterialTheme.colorScheme.error.copy(alpha = 0.6f) else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f)
+            color = if (isDangerous) MaterialTheme.colorScheme.error.copy(alpha = 0.4f) else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f)
         ),
         modifier = Modifier.fillMaxWidth().clickable { onClick() }
     ) {
-        Row(modifier = Modifier.padding(16.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Row(modifier = Modifier.padding(12.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Box(modifier = Modifier.size(48.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surface), contentAlignment = Alignment.Center) {
                 NativeAppIcon(uid = summary.uid, modifier = Modifier.size(32.dp))
             }
@@ -464,14 +464,14 @@ fun AppDetailReport(summary: AppSummary, onBackClick: () -> Unit) {
         ) {
             Row(modifier = Modifier.padding(24.dp), verticalAlignment = Alignment.CenterVertically) {
                 Box(
-                    modifier = Modifier.size(80.dp).clip(CircleShape).background(summary.scoreBreakdown.color.copy(alpha = 0.2f)).border(4.dp, summary.scoreBreakdown.color, CircleShape),
+                    modifier = Modifier.size(64.dp).clip(CircleShape).background(summary.scoreBreakdown.color.copy(alpha = 0.2f)).border(4.dp, summary.scoreBreakdown.color, CircleShape),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(summary.scoreBreakdown.grade, fontSize = 42.sp, fontWeight = FontWeight.Black, color = summary.scoreBreakdown.color)
+                    Text(summary.scoreBreakdown.grade, fontSize = 28.sp, fontWeight = FontWeight.Black, color = summary.scoreBreakdown.color)
                 }
-                Spacer(modifier = Modifier.width(20.dp))
+                Spacer(modifier = Modifier.width(16.dp))
                 Column {
-                    Text("Privacy Score: ${summary.scoreBreakdown.finalScore}/100", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                    Text("Privacy Score: ${summary.scoreBreakdown.finalScore}/100", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                     Text("Security Assessment", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
