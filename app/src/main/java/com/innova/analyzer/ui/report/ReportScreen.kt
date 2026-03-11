@@ -69,6 +69,7 @@ data class AppSummary(
     val httpCount: Int,
     val otherCount: Int,
     val logs: List<NetworkEvent>,
+    val totalBytes: Long,
     val scoreBreakdown: ScoreBreakdown,
     val trafficCategories: Map<String, Int> // Holds the heuristic data categories
 )
@@ -214,6 +215,7 @@ fun ReportScreen(viewModel: DashboardViewModel) {
                     httpCount = packets.count { it.protocol == ConnectionProtocol.HTTP || packets.any { it.destPort == 80 } },
                     otherCount = packets.count { it.protocol != ConnectionProtocol.TCP && it.protocol != ConnectionProtocol.UDP && it.protocol != ConnectionProtocol.DNS && it.protocol != ConnectionProtocol.HTTPS && it.protocol != ConnectionProtocol.HTTP },
                     logs = packets,
+                    totalBytes = packets.sumOf { it.totalBytes },
                     scoreBreakdown = calculatePrivacyScore(packets),
                     trafficCategories = generateTrafficCategories(packets) // Generates the 10 data categories
                 )
