@@ -193,24 +193,33 @@ object PdfExporter {
                 val fileName = "Innova_Security_Report_${System.currentTimeMillis()}.pdf"
                 val resolver = context.contentResolver
 
-                val contentValues = ContentValues().apply {
-                    put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
-                    put(MediaStore.MediaColumns.MIME_TYPE, "application/pdf")
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    val contentValues = ContentValues().apply {
+                        put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
+                        put(MediaStore.MediaColumns.MIME_TYPE, "application/pdf")
                         put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
                     }
-                }
 
-                val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, contentValues)
-                if (uri != null) {
-                    resolver.openOutputStream(uri)?.use { outputStream ->
+                    val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, contentValues)
+                    if (uri != null) {
+                        resolver.openOutputStream(uri)?.use { outputStream ->
+                            pdfDocument.writeTo(outputStream)
+                        }
+                        withContext(Dispatchers.Main) {
+                            Toast.makeText(context, "✅ Report downloaded successfully to your files!", Toast.LENGTH_LONG).show()
+                        }
+                    } else {
+                        throw Exception("Failed to create file in MediaStore.")
+                    }
+                } else {
+                    val downloadDir = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
+                    val file = java.io.File(downloadDir, fileName)
+                    java.io.FileOutputStream(file).use { outputStream ->
                         pdfDocument.writeTo(outputStream)
                     }
                     withContext(Dispatchers.Main) {
-                        Toast.makeText(context, "✅ Report downloaded successfully to your files!", Toast.LENGTH_LONG).show()
+                        Toast.makeText(context, "✅ Report saved to ${file.absolutePath}", Toast.LENGTH_LONG).show()
                     }
-                } else {
-                    throw Exception("Failed to create file in MediaStore.")
                 }
 
                 pdfDocument.close()
