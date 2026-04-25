@@ -6,13 +6,14 @@ import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 
 object AbuseIpdbClient {
     private const val API_KEY = "20378cc3a1a29c818ea7e27657475e76e0f006b882c5516233722ffdab52bf24d061fe6798da12f1"
     private const val BASE_URL = "https://api.abuseipdb.com/api/v2/check"
 
-    private val scoreCache = mutableMapOf<String, Int>()
+    private val scoreCache = ConcurrentHashMap<String, Int>()
 
     private val client = OkHttpClient.Builder()
         .connectTimeout(5, TimeUnit.SECONDS)
